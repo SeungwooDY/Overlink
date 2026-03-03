@@ -1,36 +1,35 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Overlink Monorepo
 
-## Getting Started
+Phase 1 reorganizes Overlink into a workspace monorepo and introduces a Chrome extension MVP focused on Google Meet feasibility validation.
 
-First, run the development server:
+## Workspace Layout
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+```text
+apps/
+  web/        Next.js marketing/dashboard app
+  extension/  Chrome extension (Vite + TypeScript, MV3)
+packages/
+  core/       Shared processing engine placeholder
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Commands
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+From the repo root:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `npm run dev:web` – run the Next.js web app.
+- `npm run build:web` – build the Next.js web app.
+- `npm run build:extension` – build extension artifacts for Chrome.
+- `npm run lint:web` – lint the web app.
 
-## Learn More
+## Extension Phase 1 Scope
 
-To learn more about Next.js, take a look at the following resources:
+The extension currently validates technical feasibility only:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+1. Detect Google Meet screen-share `<video>` candidates.
+2. Capture frames through a canvas and verify pixel access.
+3. Downscale frames before OCR.
+4. Run local OCR with `tesseract.js` in-worker.
+5. Extract URL-like strings via regex.
+6. Log OCR duration and memory observations.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+No popup UI, storage, history, overlays, or backend integration are included in this phase.
