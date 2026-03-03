@@ -1,5 +1,7 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+Are you too embarrassed to ask for a link to the slides during a presentation? Do you feel like it would disrupt the flow of the conversation? This can become a problem, especially for presentations with larger audiences. Overlink fixes this issue by overlaying detected URLs within a Google Meet browser. No more asking for slide links, just access important URLs from your meeting!
+
 ## Getting Started
 
 First, run the development server:
