@@ -1,12 +1,12 @@
 /**
- * Overlink — Content Script (Phase 1)
+ * Overlink — Content Script
  *
  * Responsibilities:
  *   1. Detect the screen-share <video> element in Google Meet
  *   2. Capture frames at a throttled interval
  *   3. Skip OCR when the frame hasn't changed (perceptual hash)
  *   4. Send the frame to the background service worker for OCR
- *   5. Log extracted URLs
+ *   5. Render a floating overlay panel with clickable detected URLs
  *
  * No OCR runs here — avoids Google Meet's Trusted Types CSP entirely.
  */
@@ -44,9 +44,7 @@ function findScreenShareVideo(): HTMLVideoElement | null {
 
   // Require the selected tile to occupy at least 30% of the viewport width.
   // Screen-share tiles in spotlight/presentation mode are always large; webcam
-  // strip thumbnails and self-view previews are much smaller. This also handles
-  // the case where one video has zero rendered area (hidden/off-screen) which
-  // would otherwise cause a dominance ratio of infinity and fall through.
+  // strip thumbnails and self-view previews are much smaller.
   if (r.width < window.innerWidth * 0.3) {
     console.log(
       `${LOG} Largest video rendered at ${Math.round(r.width)}px — below 30% viewport threshold, skipping OCR.`
@@ -88,47 +86,115 @@ function captureFrame(video: HTMLVideoElement): HTMLCanvasElement | null {
   }
 }
 
-// ── 3. Perceptual hash (change detection) ────────────────────────────────────
 
-function frameHash(canvas: HTMLCanvasElement): string {
-  const W = 16,
-    H = 9;
-  const thumb = document.createElement("canvas");
-  thumb.width = W;
-  thumb.height = H;
-  const ctx = thumb.getContext("2d")!;
-  ctx.drawImage(canvas, 0, 0, W, H);
-  const { data } = ctx.getImageData(0, 0, W, H);
-  let hash = "";
-  for (let i = 0; i < W * H; i++) {
-    const luma = Math.round(
-      (data[i * 4] * 0.299 + data[i * 4 + 1] * 0.587 + data[i * 4 + 2] * 0.114) / 16
-    );
-    hash += luma.toString(16);
-  }
-  return hash;
+// ── 4. Overlay ────────────────────────────────────────────────────────────────
+
+let overlayEl: HTMLDivElement | null = null;
+let overlayVideo: HTMLVideoElement | null = null;
+let resizeObserver: ResizeObserver | null = null;
+
+function positionOverlay(video: HTMLVideoElement): void {
+  if (!overlayEl) return;
+  const r = video.getBoundingClientRect();
+  overlayEl.style.top = `${r.top + 10}px`;
+  overlayEl.style.left = `${r.left + 10}px`;
 }
 
-// ── Main pipeline ─────────────────────────────────────────────────────────────
+function updateOverlay(video: HTMLVideoElement, urls: string[]): void {
+  if (urls.length === 0) {
+    removeOverlay();
+    return;
+  }
 
-let lastHash = "";
+  // If the video element changed (e.g. Meet rebuilt the tile), reset.
+  if (overlayVideo && overlayVideo !== video) {
+    removeOverlay();
+  }
+
+  // Create the panel on first use.
+  if (!overlayEl) {
+    const div = document.createElement("div");
+    div.setAttribute("data-overlink", "1");
+    div.style.cssText = [
+      "position:fixed",
+      "z-index:2147483647",
+      "background:rgba(15,15,15,0.88)",
+      "backdrop-filter:blur(8px)",
+      "-webkit-backdrop-filter:blur(8px)",
+      "border:1px solid rgba(255,255,255,0.12)",
+      "border-radius:10px",
+      "padding:8px 12px",
+      "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
+      "font-size:13px",
+      "line-height:1.6",
+      "max-width:300px",
+      "box-shadow:0 4px 24px rgba(0,0,0,0.5)",
+      "pointer-events:auto",
+      "user-select:none",
+    ].join(";");
+
+    // Stop clicks on the panel from bubbling to Meet's video tile.
+    div.addEventListener("click", (e) => e.stopPropagation());
+
+    document.body.appendChild(div);
+    overlayEl = div;
+    overlayVideo = video;
+
+    // Reposition immediately when the video element resizes.
+    resizeObserver = new ResizeObserver(() => positionOverlay(video));
+    resizeObserver.observe(video);
+  }
+
+  // Rebuild link list.
+  overlayEl.innerHTML = "";
+
+  const label = document.createElement("div");
+  label.style.cssText =
+    "color:rgba(255,255,255,0.4);font-size:10px;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:5px;";
+  label.textContent = "Overlink";
+  overlayEl.appendChild(label);
+
+  for (const url of urls) {
+    const href = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+    const a = document.createElement("a");
+    a.href = href;
+    a.textContent = url;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    a.style.cssText =
+      "display:block;color:#60a5fa;text-decoration:none;word-break:break-all;";
+    a.addEventListener("mouseover", () => (a.style.textDecoration = "underline"));
+    a.addEventListener("mouseout", () => (a.style.textDecoration = "none"));
+    overlayEl.appendChild(a);
+  }
+
+  positionOverlay(video);
+}
+
+function removeOverlay(): void {
+  overlayEl?.remove();
+  overlayEl = null;
+  resizeObserver?.disconnect();
+  resizeObserver = null;
+  overlayVideo = null;
+}
+
+// ── 5. Main pipeline ──────────────────────────────────────────────────────────
+
 let ocrRunning = false;
 
 async function runPipeline(): Promise<void> {
   if (ocrRunning) return;
 
   const video = findScreenShareVideo();
-  if (!video) return;
+  if (!video) {
+    removeOverlay();
+    return;
+  }
 
   const canvas = captureFrame(video);
   if (!canvas) return;
 
-  const hash = frameHash(canvas);
-  if (hash === lastHash) {
-    console.log(`${LOG} Frame unchanged — skipping OCR.`);
-    return;
-  }
-  lastHash = hash;
   ocrRunning = true;
 
   try {
@@ -148,6 +214,8 @@ async function runPipeline(): Promise<void> {
     console.log(`${LOG} ══ Result (${response.elapsed.toFixed(0)} ms) ══`);
     console.log(`${LOG}   URLs found: ${response.urls.length}`);
     response.urls.forEach((u, i) => console.log(`${LOG}   [${i + 1}] ${u}`));
+
+    updateOverlay(video, response.urls);
   } catch (err) {
     console.error(`${LOG} sendMessage failed:`, err);
   } finally {
@@ -158,8 +226,13 @@ async function runPipeline(): Promise<void> {
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
 async function boot(): Promise<void> {
-  console.log(`${LOG} Phase 1 loaded. Waiting for Meet to initialise…`);
+  console.log(`${LOG} Loaded. Waiting for Meet to initialise…`);
   await new Promise<void>((r) => setTimeout(r, 3_000));
+
+  // Reposition overlay whenever the viewport resizes.
+  window.addEventListener("resize", () => {
+    if (overlayVideo) positionOverlay(overlayVideo);
+  });
 
   console.log(`${LOG} Polling every ${POLL_INTERVAL_MS / 1000} s.`);
   setInterval(runPipeline, POLL_INTERVAL_MS);
