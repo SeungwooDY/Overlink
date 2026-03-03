@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "Overlink",
+  "version": "0.1.0",
+  "description": "Detect and open URLs from screen shares — locally, privately.",
+  "permissions": ["offscreen"],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://meet.google.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "worker.min.js",
+        "tesseract-core.wasm.js",
+        "tesseract-core-lstm.wasm.js",
+        "tesseract-core-simd.wasm.js",
+        "tesseract-core-simd-lstm.wasm.js",
+        "lang/*"
+      ],
+      "matches": ["https://meet.google.com/*"]
+    }
+  ]
+}
