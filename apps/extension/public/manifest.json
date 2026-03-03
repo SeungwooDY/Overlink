@@ -3,7 +3,11 @@
   "name": "Overlink",
   "version": "0.1.0",
   "description": "Detect and open URLs from screen shares — locally, privately.",
-  "permissions": ["offscreen"],
+  "permissions": ["offscreen", "storage"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Overlink"
+  },
   "content_security_policy": {
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
   },

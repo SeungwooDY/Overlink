@@ -12,7 +12,7 @@
  */
 
 const LOG = "[Overlink]";
-const POLL_INTERVAL_MS = 5_000;
+const DEFAULT_POLL_MS = 5_000;
 const FRAME_MAX_WIDTH = 800;
 
 // ── 1. Video detection ────────────────────────────────────────────────────────
@@ -182,6 +182,14 @@ function removeOverlay(): void {
 // ── 5. Main pipeline ──────────────────────────────────────────────────────────
 
 let ocrRunning = false;
+let intervalId: ReturnType<typeof setInterval> | null = null;
+
+function startPolling(ms: number): void {
+  if (intervalId !== null) clearInterval(intervalId);
+  console.log(`${LOG} Polling every ${ms / 1000} s.`);
+  intervalId = setInterval(runPipeline, ms);
+  runPipeline();
+}
 
 async function runPipeline(): Promise<void> {
   if (ocrRunning) return;
@@ -234,9 +242,17 @@ async function boot(): Promise<void> {
     if (overlayVideo) positionOverlay(overlayVideo);
   });
 
-  console.log(`${LOG} Polling every ${POLL_INTERVAL_MS / 1000} s.`);
-  setInterval(runPipeline, POLL_INTERVAL_MS);
-  runPipeline();
+  // Read saved poll interval (falls back to default if never set).
+  const { pollInterval = DEFAULT_POLL_MS } =
+    await chrome.storage.sync.get("pollInterval");
+  startPolling(pollInterval);
+
+  // React to changes made in the popup without reloading the page.
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "sync" && changes.pollInterval) {
+      startPolling(changes.pollInterval.newValue);
+    }
+  });
 }
 
 boot();
