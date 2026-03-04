@@ -13,20 +13,24 @@ export default function NavBar() {
   useEffect(() => {
     const supabase = createClient();
 
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (!session) { setPlan("free"); return; }
+    async function loadPlan(session: { access_token: string; user: { email?: string } } | null) {
+      if (!session) { setEmail(null); setPlan("free"); return; }
       setEmail(session.user.email ?? null);
-
       const res = await fetch("/api/user/plan", {
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
-      if (res.ok) {
-        const { plan } = await res.json();
-        setPlan(plan);
-      } else {
-        setPlan("free");
-      }
+      setPlan(res.ok ? (await res.json()).plan : "free");
+    }
+
+    // Initial session check
+    supabase.auth.getSession().then(({ data: { session } }) => loadPlan(session));
+
+    // Keep UI in sync whenever auth state changes (OAuth redirect, sign-out, token refresh)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      loadPlan(session);
     });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const font = "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
