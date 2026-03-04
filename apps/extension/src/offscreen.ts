@@ -11,6 +11,7 @@
  */
 
 import { createWorker, type Worker as TesseractWorker } from "tesseract.js";
+import jsQR from "jsqr";
 
 const LOG = "[Overlink Offscreen]";
 
@@ -55,17 +56,66 @@ async function getWorker(): Promise<TesseractWorker> {
   return workerInitPromise;
 }
 
+// ── QR detection ──────────────────────────────────────────────────────────────
+
+function tryJsQR(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  blur: number
+): string | null {
+  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  ctx.filter = blur > 0 ? `blur(${blur}px)` : "none";
+  ctx.drawImage(img, 0, 0);
+  ctx.filter = "none";
+  const { data, width, height } = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
+  const result = jsQR(data, width, height, { inversionAttempts: "attemptBoth" });
+  return result?.data ?? null;
+}
+
+function decodeQR(imageDataUrl: string): Promise<string[]> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      console.log(`${LOG} QR decode: image ${img.width}×${img.height}`);
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) { resolve([]); return; }
+
+      // Try progressively stronger blur to counter H.264/VP9 DCT ringing artifacts.
+      // Blur smooths module-edge corruption; too much blur merges adjacent modules.
+      for (const blur of [0, 1, 2, 3]) {
+        const found = tryJsQR(ctx, img, blur);
+        if (found !== null) {
+          console.log(`${LOG} QR found at blur=${blur}px: ${found}`);
+          resolve([found]);
+          return;
+        }
+      }
+
+      console.log(`${LOG} QR codes (0): []`);
+      resolve([]);
+    };
+    img.onerror = () => resolve([]);
+    img.src = imageDataUrl;
+  });
+}
+
 // ── OCR handler ───────────────────────────────────────────────────────────────
 
 async function performOCR(
   imageDataUrl: string
-): Promise<{ urls: string[]; elapsed: number }> {
-  const w = await getWorker();
+): Promise<{ urls: string[]; qrCodes: string[]; elapsed: number }> {
   const t0 = performance.now();
-  const {
-    data: { text },
-  } = await w.recognize(imageDataUrl);
+
+  const [ocrResult, qrCodes] = await Promise.all([
+    getWorker().then((w) => w.recognize(imageDataUrl)),
+    decodeQR(imageDataUrl),
+  ]);
+
   const elapsed = performance.now() - t0;
+  const text = ocrResult.data.text;
 
   console.log(`${LOG} OCR done in ${elapsed.toFixed(0)} ms`);
   if (elapsed > 5_000) {
@@ -75,7 +125,7 @@ async function performOCR(
 
   const urls = extractURLs(text);
   console.log(`${LOG} URLs (${urls.length}):`, urls);
-  return { urls, elapsed };
+  return { urls, qrCodes, elapsed };
 }
 
 // ── Message listener ──────────────────────────────────────────────────────────

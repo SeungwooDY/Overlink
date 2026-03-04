@@ -13,7 +13,10 @@
 
 const LOG = "[Overlink]";
 const DEFAULT_POLL_MS = 5_000;
-const FRAME_MAX_WIDTH = 800;
+const FRAME_MAX_WIDTH = 1920;
+const DOMINANCE_RATIO = 3;        // Layer 2: top video must be 3× area of second
+const MIN_INTRINSIC_WIDTH = 1280; // Layer 3: minimum screen-res width
+const MIN_RENDERED_PX = 200;      // sanity: skip hidden / collapsed video elements
 
 // ── 1. Video detection ────────────────────────────────────────────────────────
 
@@ -31,30 +34,57 @@ function findScreenShareVideo(): HTMLVideoElement | null {
 
   if (candidates.length === 0) return null;
 
-  // Sort by rendered CSS area — the screen-share tile is always the largest
-  // element on the page; webcam tiles are smaller regardless of stream resolution.
-  candidates.sort((a, b) => {
+  // Layer 1: contentHint — "detail" / "text" = screen capture; "motion" / "" = webcam
+  for (const v of candidates) {
+    const hint = (v.srcObject as MediaStream | null)
+      ?.getVideoTracks()[0]?.contentHint;
+    if (hint === "detail" || hint === "text") {
+      console.log(`${LOG} Screen share detected via contentHint="${hint}" (${v.videoWidth}×${v.videoHeight})`);
+      return v;
+    }
+  }
+
+  // Layer 2: dominance ratio — screen share tile rendered >> webcam thumbnails
+  const sorted = [...candidates].sort((a, b) => {
     const ra = a.getBoundingClientRect();
     const rb = b.getBoundingClientRect();
     return rb.width * rb.height - ra.width * ra.height;
   });
 
-  const pick = candidates[0];
-  const r = pick.getBoundingClientRect();
+  const pick = sorted[0];
+  const rPick = pick.getBoundingClientRect();
 
-  // Require the selected tile to occupy at least 30% of the viewport width.
-  // Screen-share tiles in spotlight/presentation mode are always large; webcam
-  // strip thumbnails and self-view previews are much smaller.
-  if (r.width < window.innerWidth * 0.3) {
-    console.log(
-      `${LOG} Largest video rendered at ${Math.round(r.width)}px — below 30% viewport threshold, skipping OCR.`
-    );
+  if (rPick.width < MIN_RENDERED_PX) {
+    console.log(`${LOG} Largest video too small (${Math.round(rPick.width)}px), skipping.`);
     return null;
   }
-  console.log(
-    `${LOG} Video: ${pick.videoWidth}×${pick.videoHeight} rendered ${Math.round(r.width)}×${Math.round(r.height)} (${candidates.length} candidate${candidates.length !== 1 ? "s" : ""})`
-  );
-  return pick;
+
+  if (sorted.length >= 2) {
+    const rSecond = sorted[1].getBoundingClientRect();
+    const pickArea = rPick.width * rPick.height;
+    const secondArea = rSecond.width * rSecond.height;
+    const ratio = secondArea > 0 ? pickArea / secondArea : Infinity;
+
+    if (ratio >= DOMINANCE_RATIO) {
+      console.log(
+        `${LOG} Screen share via dominance ratio (${ratio.toFixed(1)}×): ` +
+        `${pick.videoWidth}×${pick.videoHeight} rendered ${Math.round(rPick.width)}×${Math.round(rPick.height)}`
+      );
+      return pick;
+    }
+
+    console.log(`${LOG} No dominant video (ratio ${ratio.toFixed(1)}× < ${DOMINANCE_RATIO}×), skipping OCR.`);
+    return null;
+  }
+
+  // Layer 3: single video — require screen-level intrinsic resolution
+  if (pick.videoWidth >= MIN_INTRINSIC_WIDTH) {
+    console.log(`${LOG} Single video at ${pick.videoWidth}×${pick.videoHeight}, treating as screen share.`);
+    return pick;
+  }
+
+  console.log(`${LOG} Single video ${pick.videoWidth}×${pick.videoHeight} below intrinsic resolution floor, skipping.`);
+  return null;
 }
 
 // ── 2. Frame capture + downscaling ───────────────────────────────────────────
@@ -100,8 +130,8 @@ function positionOverlay(video: HTMLVideoElement): void {
   overlayEl.style.left = `${r.left + 10}px`;
 }
 
-function updateOverlay(video: HTMLVideoElement, urls: string[]): void {
-  if (urls.length === 0) {
+function updateOverlay(video: HTMLVideoElement, urls: string[], qrCodes: string[] = []): void {
+  if (urls.length === 0 && qrCodes.length === 0) {
     removeOverlay();
     return;
   }
@@ -148,24 +178,43 @@ function updateOverlay(video: HTMLVideoElement, urls: string[]): void {
   // Rebuild link list.
   overlayEl.innerHTML = "";
 
-  const label = document.createElement("div");
-  label.style.cssText =
+  const header = document.createElement("div");
+  header.style.cssText =
     "color:rgba(255,255,255,0.4);font-size:10px;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:5px;";
-  label.textContent = "Overlink";
-  overlayEl.appendChild(label);
+  header.textContent = "Overlink";
+  overlayEl.appendChild(header);
 
-  for (const url of urls) {
-    const href = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+  function appendLink(payload: string, sectionColor: string): void {
+    const href = /^https?:\/\//i.test(payload) ? payload : `https://${payload}`;
     const a = document.createElement("a");
     a.href = href;
-    a.textContent = url;
+    a.textContent = payload;
     a.target = "_blank";
     a.rel = "noopener noreferrer";
-    a.style.cssText =
-      "display:block;color:#60a5fa;text-decoration:none;word-break:break-all;";
+    a.style.cssText = `display:block;color:${sectionColor};text-decoration:none;word-break:break-all;`;
     a.addEventListener("mouseover", () => (a.style.textDecoration = "underline"));
     a.addEventListener("mouseout", () => (a.style.textDecoration = "none"));
-    overlayEl.appendChild(a);
+    overlayEl!.appendChild(a);
+  }
+
+  if (urls.length > 0) {
+    if (qrCodes.length > 0) {
+      const sectionLabel = document.createElement("div");
+      sectionLabel.style.cssText =
+        "color:rgba(255,255,255,0.3);font-size:10px;text-transform:uppercase;letter-spacing:0.06em;margin:4px 0 2px;";
+      sectionLabel.textContent = "Links";
+      overlayEl.appendChild(sectionLabel);
+    }
+    for (const url of urls) appendLink(url, "#60a5fa");
+  }
+
+  if (qrCodes.length > 0) {
+    const sectionLabel = document.createElement("div");
+    sectionLabel.style.cssText =
+      "color:rgba(255,255,255,0.3);font-size:10px;text-transform:uppercase;letter-spacing:0.06em;margin:4px 0 2px;";
+    sectionLabel.textContent = "QR Codes";
+    overlayEl.appendChild(sectionLabel);
+    for (const code of qrCodes) appendLink(code, "#34d399");
   }
 
   positionOverlay(video);
@@ -206,13 +255,13 @@ async function runPipeline(): Promise<void> {
   ocrRunning = true;
 
   try {
-    const imageDataUrl = canvas.toDataURL("image/jpeg", 0.8);
+    const imageDataUrl = canvas.toDataURL("image/png");
     console.log(`${LOG} Sending frame for OCR (${Math.round(imageDataUrl.length / 1024)} KB)…`);
 
     const response = (await chrome.runtime.sendMessage({
       type: "RUN_OCR",
       imageDataUrl,
-    })) as { urls: string[]; elapsed: number; error?: string };
+    })) as { urls: string[]; qrCodes: string[]; elapsed: number; error?: string };
 
     if (response?.error) {
       console.error(`${LOG} OCR error:`, response.error);
@@ -222,8 +271,10 @@ async function runPipeline(): Promise<void> {
     console.log(`${LOG} ══ Result (${response.elapsed.toFixed(0)} ms) ══`);
     console.log(`${LOG}   URLs found: ${response.urls.length}`);
     response.urls.forEach((u, i) => console.log(`${LOG}   [${i + 1}] ${u}`));
+    console.log(`${LOG}   QR codes found: ${response.qrCodes.length}`);
+    response.qrCodes.forEach((q, i) => console.log(`${LOG}   [QR ${i + 1}] ${q}`));
 
-    updateOverlay(video, response.urls);
+    updateOverlay(video, response.urls, response.qrCodes);
   } catch (err) {
     console.error(`${LOG} sendMessage failed:`, err);
   } finally {
