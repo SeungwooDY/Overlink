@@ -1,26 +1,51 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
-// Handle OAuth callback client-side so the plain supabase-js client
-// (which uses localStorage) performs the PKCE code exchange itself.
-// It stored the code_verifier in localStorage during signInWithOAuth,
-// so exchangeCodeForSession reads it from there — no server cookie
-// bridging needed, and the session lands directly in localStorage.
 export default function AuthCallbackPage() {
+  const [error, setError] = useState<string | null>(null);
+
   useEffect(() => {
-    const code = new URLSearchParams(window.location.search).get("code");
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("code");
+    const errorParam = params.get("error");
+    const errorDescription = params.get("error_description");
+
+    if (errorParam) {
+      setError(`${errorParam}: ${errorDescription ?? "unknown error"}`);
+      return;
+    }
 
     if (code) {
       createClient()
         .auth.exchangeCodeForSession(code)
-        .then(() => { window.location.href = "/"; })
-        .catch(() => { window.location.href = "/login"; });
+        .then(({ error }) => {
+          if (error) {
+            setError(error.message);
+          } else {
+            window.location.href = "/";
+          }
+        });
     } else {
-      window.location.href = "/";
+      setError("No code parameter in callback URL. Check Supabase redirect URL configuration.");
     }
   }, []);
+
+  if (error) {
+    return (
+      <div style={{
+        minHeight: "100vh", display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center",
+        background: "#0a0a0a", color: "#fff",
+        fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+        gap: 16, padding: "0 24px", textAlign: "center",
+      }}>
+        <span style={{ color: "#f87171", fontSize: 14 }}>Sign-in failed: {error}</span>
+        <a href="/login" style={{ color: "#60a5fa", fontSize: 14 }}>Back to login</a>
+      </div>
+    );
+  }
 
   return (
     <div style={{
