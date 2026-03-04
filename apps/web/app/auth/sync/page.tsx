@@ -1,11 +1,18 @@
 "use client";
 
 import { useEffect } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { createBrowserClient } from "@supabase/ssr";
 
 export default function AuthSync() {
   useEffect(() => {
-    const supabase = createClient();
+    // Use the SSR browser client (cookie-aware) to read the session set by
+    // the server-side OAuth callback, then copy it into localStorage so the
+    // plain supabase-js client (used by GetProButton / NavBar / auth-bridge)
+    // can find it.
+    const supabase = createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.access_token) {
