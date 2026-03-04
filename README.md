@@ -1,6 +1,6 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-Are you too embarrassed to ask for a link to the slides during a presentation? Do you feel like it would disrupt the flow of the conversation? This can become a problem, especially for presentations with larger audiences. Overlink fixes this issue by overlaying detected URLs within a Google Meet browser. No more asking for slide links, just access important URLs from your meeting!
+Overlink is a browser tool that extracts valid URLs, QR codes, emails, phone numbers, and other important information from a presenter's screen. Quickly access links, send emails with one click, call or add a new mobile number, add events to your calendar, and more without leaving your online meeting. 
 
 ## Getting Started
 
