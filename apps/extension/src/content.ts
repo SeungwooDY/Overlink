@@ -122,9 +122,13 @@ function captureFrame(video: HTMLVideoElement): HTMLCanvasElement | null {
 let overlayEl: HTMLDivElement | null = null;
 let overlayVideo: HTMLVideoElement | null = null;
 let resizeObserver: ResizeObserver | null = null;
+let userMovedOverlay = false;
+let isDragging = false;
+let dragOffsetX = 0;
+let dragOffsetY = 0;
 
 function positionOverlay(video: HTMLVideoElement): void {
-  if (!overlayEl) return;
+  if (!overlayEl || userMovedOverlay) return;
   const r = video.getBoundingClientRect();
   overlayEl.style.top = `${r.top + 10}px`;
   overlayEl.style.left = `${r.left + 10}px`;
@@ -161,10 +165,21 @@ function updateOverlay(video: HTMLVideoElement, urls: string[], qrCodes: string[
       "box-shadow:0 4px 24px rgba(0,0,0,0.5)",
       "pointer-events:auto",
       "user-select:none",
+      "cursor:move",
     ].join(";");
 
     // Stop clicks on the panel from bubbling to Meet's video tile.
     div.addEventListener("click", (e) => e.stopPropagation());
+
+    // Drag to reposition — skip if the user clicked a link.
+    div.addEventListener("mousedown", (e) => {
+      if ((e.target as HTMLElement).tagName === "A") return;
+      isDragging = true;
+      const rect = div.getBoundingClientRect();
+      dragOffsetX = e.clientX - rect.left;
+      dragOffsetY = e.clientY - rect.top;
+      e.preventDefault();
+    });
 
     document.body.appendChild(div);
     overlayEl = div;
@@ -226,6 +241,7 @@ function removeOverlay(): void {
   resizeObserver?.disconnect();
   resizeObserver = null;
   overlayVideo = null;
+  userMovedOverlay = false;
 }
 
 // ── 5. Main pipeline ──────────────────────────────────────────────────────────
@@ -292,6 +308,15 @@ async function boot(): Promise<void> {
   window.addEventListener("resize", () => {
     if (overlayVideo) positionOverlay(overlayVideo);
   });
+
+  // Drag move/release — document-level so the cursor can leave the panel.
+  document.addEventListener("mousemove", (e) => {
+    if (!isDragging || !overlayEl) return;
+    overlayEl.style.left = `${e.clientX - dragOffsetX}px`;
+    overlayEl.style.top = `${e.clientY - dragOffsetY}px`;
+    userMovedOverlay = true;
+  });
+  document.addEventListener("mouseup", () => { isDragging = false; });
 
   // Read saved poll interval (falls back to default if never set).
   const { pollInterval = DEFAULT_POLL_MS } =
