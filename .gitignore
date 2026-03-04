@@ -45,3 +45,4 @@ next-env.d.ts
 
 # large binary assets (download separately)
 apps/extension/public/lang/*.traineddata.gz
+.env*.local
