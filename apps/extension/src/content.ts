@@ -89,20 +89,30 @@ function findScreenShareVideo(): HTMLVideoElement | null {
 
 // ── 2. Frame capture + downscaling ───────────────────────────────────────────
 
+// White padding around the frame gives Tesseract and jsQR context for content
+// that sits at the very edge of the video tile.
+const FRAME_PADDING = 32;
+
 function captureFrame(video: HTMLVideoElement): HTMLCanvasElement | null {
   const scale = Math.min(1, FRAME_MAX_WIDTH / video.videoWidth);
   const w = Math.floor(video.videoWidth * scale);
   const h = Math.floor(video.videoHeight * scale);
 
   const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
+  canvas.width = w + FRAME_PADDING * 2;
+  canvas.height = h + FRAME_PADDING * 2;
 
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) return null;
 
   try {
-    ctx.drawImage(video, 0, 0, w, h);
+    // White background for the padding area.
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // Contrast boost counters WebRTC compression softening small text edges.
+    ctx.filter = "contrast(1.4)";
+    ctx.drawImage(video, FRAME_PADDING, FRAME_PADDING, w, h);
+    ctx.filter = "none";
     ctx.getImageData(0, 0, 1, 1); // throws SecurityError if cross-origin
     console.log(`${LOG} Frame captured: ${w}×${h} (scale ${scale.toFixed(2)})`);
     return canvas;
@@ -134,8 +144,14 @@ function positionOverlay(video: HTMLVideoElement): void {
   overlayEl.style.left = `${r.left + 10}px`;
 }
 
-function updateOverlay(video: HTMLVideoElement, urls: string[], qrCodes: string[] = []): void {
-  if (urls.length === 0 && qrCodes.length === 0) {
+function updateOverlay(
+  video: HTMLVideoElement,
+  urls: string[],
+  qrCodes: string[] = [],
+  emails: string[] = [],
+  phones: string[] = []
+): void {
+  if (urls.length === 0 && qrCodes.length === 0 && emails.length === 0 && phones.length === 0) {
     removeOverlay();
     return;
   }
@@ -199,37 +215,74 @@ function updateOverlay(video: HTMLVideoElement, urls: string[], qrCodes: string[
   header.textContent = "Overlink";
   overlayEl.appendChild(header);
 
-  function appendLink(payload: string, sectionColor: string): void {
+  const sectionLabelCss =
+    "color:rgba(255,255,255,0.3);font-size:10px;text-transform:uppercase;letter-spacing:0.06em;margin:4px 0 2px;";
+  const totalSections = [urls, qrCodes, emails, phones].filter((a) => a.length > 0).length;
+
+  function appendSectionLabel(text: string): void {
+    if (totalSections <= 1) return; // no label needed when only one section
+    const el = document.createElement("div");
+    el.style.cssText = sectionLabelCss;
+    el.textContent = text;
+    overlayEl!.appendChild(el);
+  }
+
+  function appendLink(payload: string, color: string): void {
     const href = /^https?:\/\//i.test(payload) ? payload : `https://${payload}`;
     const a = document.createElement("a");
     a.href = href;
     a.textContent = payload;
     a.target = "_blank";
     a.rel = "noopener noreferrer";
-    a.style.cssText = `display:block;color:${sectionColor};text-decoration:none;word-break:break-all;`;
+    a.style.cssText = `display:block;color:${color};text-decoration:none;word-break:break-all;`;
     a.addEventListener("mouseover", () => (a.style.textDecoration = "underline"));
     a.addEventListener("mouseout", () => (a.style.textDecoration = "none"));
     overlayEl!.appendChild(a);
   }
 
+  function appendEntityRow(label: string, href: string, actionText: string, color: string): void {
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin:1px 0;";
+
+    const span = document.createElement("span");
+    span.textContent = label;
+    span.style.cssText = `color:${color};word-break:break-all;flex:1;min-width:0;`;
+
+    const btn = document.createElement("a");
+    btn.href = href;
+    btn.textContent = actionText;
+    btn.target = "_blank";
+    btn.rel = "noopener noreferrer";
+    btn.style.cssText =
+      "color:rgba(255,255,255,0.45);font-size:10px;text-transform:uppercase;letter-spacing:0.05em;" +
+      "text-decoration:none;white-space:nowrap;border:1px solid rgba(255,255,255,0.18);" +
+      "padding:1px 5px;border-radius:4px;flex-shrink:0;";
+    btn.addEventListener("mouseover", () => (btn.style.color = "rgba(255,255,255,0.85)"));
+    btn.addEventListener("mouseout", () => (btn.style.color = "rgba(255,255,255,0.45)"));
+
+    row.appendChild(span);
+    row.appendChild(btn);
+    overlayEl!.appendChild(row);
+  }
+
   if (urls.length > 0) {
-    if (qrCodes.length > 0) {
-      const sectionLabel = document.createElement("div");
-      sectionLabel.style.cssText =
-        "color:rgba(255,255,255,0.3);font-size:10px;text-transform:uppercase;letter-spacing:0.06em;margin:4px 0 2px;";
-      sectionLabel.textContent = "Links";
-      overlayEl.appendChild(sectionLabel);
-    }
+    appendSectionLabel("Links");
     for (const url of urls) appendLink(url, "#60a5fa");
   }
 
   if (qrCodes.length > 0) {
-    const sectionLabel = document.createElement("div");
-    sectionLabel.style.cssText =
-      "color:rgba(255,255,255,0.3);font-size:10px;text-transform:uppercase;letter-spacing:0.06em;margin:4px 0 2px;";
-    sectionLabel.textContent = "QR Codes";
-    overlayEl.appendChild(sectionLabel);
+    appendSectionLabel("QR Codes");
     for (const code of qrCodes) appendLink(code, "#34d399");
+  }
+
+  if (emails.length > 0) {
+    appendSectionLabel("Emails");
+    for (const email of emails) appendEntityRow(email, `mailto:${email}`, "Compose", "#c084fc");
+  }
+
+  if (phones.length > 0) {
+    appendSectionLabel("Phones");
+    for (const phone of phones) appendEntityRow(phone, `tel:${phone.replace(/\s/g, "")}`, "Call", "#fb923c");
   }
 
   positionOverlay(video);
@@ -277,7 +330,7 @@ async function runPipeline(): Promise<void> {
     const response = (await chrome.runtime.sendMessage({
       type: "RUN_OCR",
       imageDataUrl,
-    })) as { urls: string[]; qrCodes: string[]; elapsed: number; error?: string };
+    })) as { urls: string[]; qrCodes: string[]; emails: string[]; phones: string[]; elapsed: number; error?: string };
 
     if (response?.error) {
       console.error(`${LOG} OCR error:`, response.error);
@@ -285,12 +338,9 @@ async function runPipeline(): Promise<void> {
     }
 
     console.log(`${LOG} ══ Result (${response.elapsed.toFixed(0)} ms) ══`);
-    console.log(`${LOG}   URLs found: ${response.urls.length}`);
-    response.urls.forEach((u, i) => console.log(`${LOG}   [${i + 1}] ${u}`));
-    console.log(`${LOG}   QR codes found: ${response.qrCodes.length}`);
-    response.qrCodes.forEach((q, i) => console.log(`${LOG}   [QR ${i + 1}] ${q}`));
+    console.log(`${LOG}   URLs: ${response.urls.length}, QR: ${response.qrCodes.length}, Emails: ${response.emails.length}, Phones: ${response.phones.length}`);
 
-    updateOverlay(video, response.urls, response.qrCodes);
+    updateOverlay(video, response.urls, response.qrCodes, response.emails, response.phones);
   } catch (err) {
     console.error(`${LOG} sendMessage failed:`, err);
   } finally {

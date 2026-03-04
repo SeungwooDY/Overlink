@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "jsqr": "^1.4.0",
+    "libphonenumber-js": "^1.12.38",
     "tesseract.js": "^5.1.1"
   },
   "devDependencies": {
