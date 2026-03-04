@@ -71,7 +71,7 @@ Return JSON only.
 
 Schema:
 {
-  "events": [{"title":string,"date":string,"time":string,"timezone":string,"location":string,"description":string}],
+  "events": [{"title":string,"date":string,"time":string,"end_time":string,"timezone":string,"location":string,"description":string}],
   "contacts": [{"name":string,"email":string,"phone":string,"company":string,"role":string}]
 }
 

@@ -148,6 +148,7 @@ interface CalendarEvent {
   title?: string;
   date?: string;
   time?: string;
+  end_time?: string;
   timezone?: string;
   location?: string;
   description?: string;
@@ -314,11 +315,50 @@ function updateOverlay(
   if (events.length > 0) {
     appendSectionLabel("Events");
     for (const ev of events) {
-      const label = [ev.title, [ev.date, ev.time].filter(Boolean).join(" "), ev.location ? `@ ${ev.location}` : ""].filter(Boolean).join(" — ");
-      // Build Google Calendar deep link
+      const timeRange = ev.time
+        ? ev.end_time ? `${ev.time} – ${ev.end_time}` : ev.time
+        : "";
+      const label = [ev.title, [ev.date, timeRange].filter(Boolean).join(" "), ev.location ? `@ ${ev.location}` : ""].filter(Boolean).join(" — ");
+
+      // Parse time string (handles "9:00 AM", "14:30", "3pm", etc.) → "HH MM SS"
+      function parseTimeTo24h(t: string): { hh: string; mm: string } {
+        const ampm = t.match(/(\d{1,2}):?(\d{0,2})\s*(am|pm)/i);
+        if (ampm) {
+          let h = parseInt(ampm[1]);
+          const m = parseInt(ampm[2] || "0");
+          if (/pm/i.test(ampm[3]) && h !== 12) h += 12;
+          if (/am/i.test(ampm[3]) && h === 12) h = 0;
+          return { hh: String(h).padStart(2, "0"), mm: String(m).padStart(2, "0") };
+        }
+        const parts = t.split(":");
+        return { hh: parts[0].padStart(2, "0"), mm: (parts[1] ?? "00").slice(0, 2).padStart(2, "0") };
+      }
+
+      // Build start/end datetime strings for Google Calendar (YYYYMMDDTHHMMSS)
+      let datesParam = "";
+      if (ev.date) {
+        const d = ev.date.replace(/-/g, "");
+        if (ev.time) {
+          const { hh, mm } = parseTimeTo24h(ev.time);
+          let endHH: string, endMM: string;
+          if (ev.end_time) {
+            const parsed = parseTimeTo24h(ev.end_time);
+            endHH = parsed.hh;
+            endMM = parsed.mm;
+          } else {
+            endHH = String((parseInt(hh) + 1) % 24).padStart(2, "0");
+            endMM = mm;
+          }
+          datesParam = `${d}T${hh}${mm}00/${d}T${endHH}${endMM}00`;
+        } else {
+          // All-day event
+          datesParam = `${d}/${d}`;
+        }
+      }
+
       const gcalParams = new URLSearchParams({ action: "TEMPLATE" });
       if (ev.title) gcalParams.set("text", ev.title);
-      if (ev.date) gcalParams.set("dates", ev.date.replace(/-/g, "") + (ev.time ? "T" + ev.time.replace(/:/g, "") + "00" : ""));
+      if (datesParam) gcalParams.set("dates", datesParam);
       if (ev.description) gcalParams.set("details", ev.description);
       if (ev.location) gcalParams.set("location", ev.location);
       const gcalUrl = `https://calendar.google.com/calendar/render?${gcalParams.toString()}`;
@@ -330,13 +370,26 @@ function updateOverlay(
     appendSectionLabel("Contacts");
     for (const c of contacts) {
       const label = [c.name, c.role && c.company ? `${c.role} @ ${c.company}` : c.company ?? c.role].filter(Boolean).join(" · ");
+      const subLabel = [c.email, c.phone].filter(Boolean).join(" · ");
+
       // vCard download button — inline handler
       const row = document.createElement("div");
-      row.style.cssText = "display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin:1px 0;";
+      row.style.cssText = "display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin:1px 0;";
+
+      const textWrap = document.createElement("div");
+      textWrap.style.cssText = "flex:1;min-width:0;";
 
       const span = document.createElement("span");
       span.textContent = label || "(contact)";
-      span.style.cssText = "color:#22d3ee;word-break:break-all;flex:1;min-width:0;";
+      span.style.cssText = "display:block;color:#22d3ee;word-break:break-all;";
+      textWrap.appendChild(span);
+
+      if (subLabel) {
+        const sub = document.createElement("span");
+        sub.textContent = subLabel;
+        sub.style.cssText = "display:block;color:rgba(255,255,255,0.35);font-size:11px;word-break:break-all;";
+        textWrap.appendChild(sub);
+      }
 
       const btn = document.createElement("button");
       btn.textContent = "Save";
@@ -367,7 +420,7 @@ function updateOverlay(
         URL.revokeObjectURL(a.href);
       });
 
-      row.appendChild(span);
+      row.appendChild(textWrap);
       row.appendChild(btn);
       overlayEl!.appendChild(row);
     }
@@ -383,6 +436,9 @@ function removeOverlay(): void {
   resizeObserver = null;
   overlayVideo = null;
   userMovedOverlay = false;
+  lastEvents = [];
+  lastContacts = [];
+  prevOcrText = "";
 }
 
 // ── 5. Main pipeline ──────────────────────────────────────────────────────────
@@ -392,6 +448,8 @@ let intervalId: ReturnType<typeof setInterval> | null = null;
 let prevOcrText = "";
 let lastExtractTime = 0;
 const EXTRACT_COOLDOWN_MS = 10_000;
+let lastEvents: CalendarEvent[] = [];
+let lastContacts: Contact[] = [];
 
 function startPolling(ms: number): void {
   if (intervalId !== null) clearInterval(intervalId);
@@ -432,8 +490,6 @@ async function runPipeline(): Promise<void> {
     console.log(`${LOG}   URLs: ${response.urls.length}, QR: ${response.qrCodes.length}, Emails: ${response.emails.length}, Phones: ${response.phones.length}`);
 
     const ocrText: string = response.text ?? "";
-    let events: CalendarEvent[] = [];
-    let contacts: Contact[] = [];
 
     const now = Date.now();
     if (
@@ -456,9 +512,9 @@ async function runPipeline(): Promise<void> {
           if (extracted?.error) {
             console.warn(`${LOG} Extract error: ${extracted.error}`);
           } else {
-            events = extracted?.events ?? [];
-            contacts = extracted?.contacts ?? [];
-            console.log(`${LOG} Extracted: ${events.length} events, ${contacts.length} contacts`);
+            lastEvents = extracted?.events ?? [];
+            lastContacts = extracted?.contacts ?? [];
+            console.log(`${LOG} Extracted: ${lastEvents.length} events, ${lastContacts.length} contacts`);
           }
         } catch (err) {
           console.warn(`${LOG} RUN_EXTRACT sendMessage failed:`, err);
@@ -466,7 +522,7 @@ async function runPipeline(): Promise<void> {
       }
     }
 
-    updateOverlay(video, response.urls, response.qrCodes, response.emails, response.phones, events, contacts);
+    updateOverlay(video, response.urls, response.qrCodes, response.emails, response.phones, lastEvents, lastContacts);
   } catch (err) {
     console.error(`${LOG} sendMessage failed:`, err);
   } finally {
