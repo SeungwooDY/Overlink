@@ -10,5 +10,7 @@ export async function GET(request: Request) {
     await supabase.auth.exchangeCodeForSession(code);
   }
 
-  return NextResponse.redirect(`${origin}/`);
+  // Redirect to a client page that syncs the session to localStorage
+  // so the extension auth-bridge can pick up the token.
+  return NextResponse.redirect(`${origin}/auth/sync`);
 }
