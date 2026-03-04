@@ -164,7 +164,7 @@ function decodeQR(imageDataUrl: string): Promise<string[]> {
 
 async function performOCR(
   imageDataUrl: string
-): Promise<{ urls: string[]; qrCodes: string[]; emails: string[]; phones: string[]; elapsed: number }> {
+): Promise<{ urls: string[]; qrCodes: string[]; emails: string[]; phones: string[]; text: string; elapsed: number }> {
   const t0 = performance.now();
 
   const [ocrResult, qrCodes] = await Promise.all([
@@ -187,7 +187,7 @@ async function performOCR(
   console.log(`${LOG} URLs (${urls.length}):`, urls);
   console.log(`${LOG} Emails (${emails.length}):`, emails);
   console.log(`${LOG} Phones (${phones.length}):`, phones);
-  return { urls, qrCodes, emails, phones, elapsed };
+  return { urls, qrCodes, emails, phones, text, elapsed };
 }
 
 // ── Message listener ──────────────────────────────────────────────────────────

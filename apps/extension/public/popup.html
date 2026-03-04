@@ -25,6 +25,37 @@
         margin-bottom: 16px;
       }
 
+      .auth-section {
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        padding: 10px 12px;
+        margin-bottom: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .auth-email {
+        font-size: 11px;
+        color: rgba(255, 255, 255, 0.55);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        flex: 1;
+        min-width: 0;
+      }
+
+      .badge-pro {
+        font-size: 10px;
+        font-weight: 700;
+        background: #22c55e;
+        color: #fff;
+        padding: 2px 7px;
+        border-radius: 99px;
+        flex-shrink: 0;
+      }
+
       .label {
         font-size: 10px;
         text-transform: uppercase;
@@ -61,11 +92,32 @@
         color: #fff;
         font-weight: 600;
       }
+
+      .auth-btn {
+        flex: none;
+        width: 100%;
+        font-size: 12px;
+        font-weight: 500;
+      }
+
+      .auth-btn.upgrade {
+        background: rgba(59, 130, 246, 0.15);
+        border-color: rgba(59, 130, 246, 0.4);
+        color: #60a5fa;
+      }
+
+      .auth-btn.upgrade:hover {
+        background: rgba(59, 130, 246, 0.25);
+        color: #93c5fd;
+      }
     </style>
   </head>
   <body>
     <h1>Overlink</h1>
     <p class="subtitle">Detect URLs in screen shares</p>
+
+    <div class="auth-section" id="auth-section"></div>
+
     <p class="label">OCR Refresh Rate</p>
     <div class="options" id="options"></div>
     <script src="popup.js" type="module"></script>

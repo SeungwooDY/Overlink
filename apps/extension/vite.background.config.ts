@@ -14,6 +14,7 @@ export default defineConfig({
         background: resolve(__dirname, "src/background.ts"),
         offscreen: resolve(__dirname, "src/offscreen.ts"),
         popup: resolve(__dirname, "src/popup.ts"),
+        "auth-bridge": resolve(__dirname, "src/auth-bridge.ts"),
       },
       output: {
         entryFileNames: "[name].js",

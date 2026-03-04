@@ -144,14 +144,40 @@ function positionOverlay(video: HTMLVideoElement): void {
   overlayEl.style.left = `${r.left + 10}px`;
 }
 
+interface CalendarEvent {
+  title?: string;
+  date?: string;
+  time?: string;
+  timezone?: string;
+  location?: string;
+  description?: string;
+}
+
+interface Contact {
+  name?: string;
+  email?: string;
+  phone?: string;
+  company?: string;
+  role?: string;
+}
+
 function updateOverlay(
   video: HTMLVideoElement,
   urls: string[],
   qrCodes: string[] = [],
   emails: string[] = [],
-  phones: string[] = []
+  phones: string[] = [],
+  events: CalendarEvent[] = [],
+  contacts: Contact[] = []
 ): void {
-  if (urls.length === 0 && qrCodes.length === 0 && emails.length === 0 && phones.length === 0) {
+  if (
+    urls.length === 0 &&
+    qrCodes.length === 0 &&
+    emails.length === 0 &&
+    phones.length === 0 &&
+    events.length === 0 &&
+    contacts.length === 0
+  ) {
     removeOverlay();
     return;
   }
@@ -217,7 +243,7 @@ function updateOverlay(
 
   const sectionLabelCss =
     "color:rgba(255,255,255,0.3);font-size:10px;text-transform:uppercase;letter-spacing:0.06em;margin:4px 0 2px;";
-  const totalSections = [urls, qrCodes, emails, phones].filter((a) => a.length > 0).length;
+  const totalSections = [urls, qrCodes, emails, phones, events, contacts].filter((a) => a.length > 0).length;
 
   function appendSectionLabel(text: string): void {
     if (totalSections <= 1) return; // no label needed when only one section
@@ -285,6 +311,68 @@ function updateOverlay(
     for (const phone of phones) appendEntityRow(phone, `tel:${phone.replace(/\s/g, "")}`, "Call", "#fb923c");
   }
 
+  if (events.length > 0) {
+    appendSectionLabel("Events");
+    for (const ev of events) {
+      const label = [ev.title, [ev.date, ev.time].filter(Boolean).join(" "), ev.location ? `@ ${ev.location}` : ""].filter(Boolean).join(" — ");
+      // Build Google Calendar deep link
+      const gcalParams = new URLSearchParams({ action: "TEMPLATE" });
+      if (ev.title) gcalParams.set("text", ev.title);
+      if (ev.date) gcalParams.set("dates", ev.date.replace(/-/g, "") + (ev.time ? "T" + ev.time.replace(/:/g, "") + "00" : ""));
+      if (ev.description) gcalParams.set("details", ev.description);
+      if (ev.location) gcalParams.set("location", ev.location);
+      const gcalUrl = `https://calendar.google.com/calendar/render?${gcalParams.toString()}`;
+      appendEntityRow(label || "(event)", gcalUrl, "Add", "#fbbf24");
+    }
+  }
+
+  if (contacts.length > 0) {
+    appendSectionLabel("Contacts");
+    for (const c of contacts) {
+      const label = [c.name, c.role && c.company ? `${c.role} @ ${c.company}` : c.company ?? c.role].filter(Boolean).join(" · ");
+      // vCard download button — inline handler
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin:1px 0;";
+
+      const span = document.createElement("span");
+      span.textContent = label || "(contact)";
+      span.style.cssText = "color:#22d3ee;word-break:break-all;flex:1;min-width:0;";
+
+      const btn = document.createElement("button");
+      btn.textContent = "Save";
+      btn.style.cssText =
+        "color:rgba(255,255,255,0.45);font-size:10px;text-transform:uppercase;letter-spacing:0.05em;" +
+        "background:none;border:1px solid rgba(255,255,255,0.18);padding:1px 5px;border-radius:4px;" +
+        "cursor:pointer;white-space:nowrap;flex-shrink:0;";
+      btn.addEventListener("mouseover", () => (btn.style.color = "rgba(255,255,255,0.85)"));
+      btn.addEventListener("mouseout", () => (btn.style.color = "rgba(255,255,255,0.45)"));
+      btn.addEventListener("click", () => {
+        const vcf = [
+          "BEGIN:VCARD",
+          "VERSION:3.0",
+          c.name ? `FN:${c.name}` : "",
+          c.email ? `EMAIL:${c.email}` : "",
+          c.phone ? `TEL:${c.phone}` : "",
+          c.company ? `ORG:${c.company}` : "",
+          c.role ? `TITLE:${c.role}` : "",
+          "END:VCARD",
+        ]
+          .filter(Boolean)
+          .join("\n");
+        const blob = new Blob([vcf], { type: "text/vcard" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `${c.name ?? "contact"}.vcf`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+      });
+
+      row.appendChild(span);
+      row.appendChild(btn);
+      overlayEl!.appendChild(row);
+    }
+  }
+
   positionOverlay(video);
 }
 
@@ -301,6 +389,9 @@ function removeOverlay(): void {
 
 let ocrRunning = false;
 let intervalId: ReturnType<typeof setInterval> | null = null;
+let prevOcrText = "";
+let lastExtractTime = 0;
+const EXTRACT_COOLDOWN_MS = 10_000;
 
 function startPolling(ms: number): void {
   if (intervalId !== null) clearInterval(intervalId);
@@ -330,7 +421,7 @@ async function runPipeline(): Promise<void> {
     const response = (await chrome.runtime.sendMessage({
       type: "RUN_OCR",
       imageDataUrl,
-    })) as { urls: string[]; qrCodes: string[]; emails: string[]; phones: string[]; elapsed: number; error?: string };
+    })) as { urls: string[]; qrCodes: string[]; emails: string[]; phones: string[]; text: string; elapsed: number; error?: string };
 
     if (response?.error) {
       console.error(`${LOG} OCR error:`, response.error);
@@ -340,7 +431,42 @@ async function runPipeline(): Promise<void> {
     console.log(`${LOG} ══ Result (${response.elapsed.toFixed(0)} ms) ══`);
     console.log(`${LOG}   URLs: ${response.urls.length}, QR: ${response.qrCodes.length}, Emails: ${response.emails.length}, Phones: ${response.phones.length}`);
 
-    updateOverlay(video, response.urls, response.qrCodes, response.emails, response.phones);
+    const ocrText: string = response.text ?? "";
+    let events: CalendarEvent[] = [];
+    let contacts: Contact[] = [];
+
+    const now = Date.now();
+    if (
+      ocrText &&
+      ocrText !== prevOcrText &&
+      now - lastExtractTime > EXTRACT_COOLDOWN_MS
+    ) {
+      prevOcrText = ocrText;
+      lastExtractTime = now;
+
+      const { authToken } = await chrome.storage.sync.get("authToken");
+      if (authToken) {
+        console.log(`${LOG} Sending RUN_EXTRACT…`);
+        try {
+          const extracted = (await chrome.runtime.sendMessage({
+            type: "RUN_EXTRACT",
+            text: ocrText,
+          })) as { events?: CalendarEvent[]; contacts?: Contact[]; error?: string };
+
+          if (extracted?.error) {
+            console.warn(`${LOG} Extract error: ${extracted.error}`);
+          } else {
+            events = extracted?.events ?? [];
+            contacts = extracted?.contacts ?? [];
+            console.log(`${LOG} Extracted: ${events.length} events, ${contacts.length} contacts`);
+          }
+        } catch (err) {
+          console.warn(`${LOG} RUN_EXTRACT sendMessage failed:`, err);
+        }
+      }
+    }
+
+    updateOverlay(video, response.urls, response.qrCodes, response.emails, response.phones, events, contacts);
   } catch (err) {
     console.error(`${LOG} sendMessage failed:`, err);
   } finally {

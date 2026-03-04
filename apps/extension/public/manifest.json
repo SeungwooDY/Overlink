@@ -11,11 +11,20 @@
   "content_security_policy": {
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
   },
+  "host_permissions": [
+    "http://localhost:3000/*"
+  ],
   "content_scripts": [
     {
       "matches": ["https://meet.google.com/*"],
       "js": ["content.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["http://localhost:3000/*"],
+      "js": ["auth-bridge.js"],
+      "run_at": "document_idle",
+      "type": "module"
     }
   ],
   "background": {
