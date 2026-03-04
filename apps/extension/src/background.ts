@@ -12,7 +12,7 @@
 const LOG = "[Overlink Background]";
 const OFFSCREEN_URL = chrome.runtime.getURL("offscreen.html");
 const OCR_TIMEOUT_MS = 60_000; // lang data CDN download can be slow on first run
-const API_BASE = "http://localhost:3000";
+const API_BASE = "https://overlink-web.vercel.app";
 
 console.log(`${LOG} Service worker started.`);
 

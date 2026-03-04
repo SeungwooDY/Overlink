@@ -10,7 +10,7 @@ const DEFAULT_MS = 5_000;
 
 // ── Auth state rendering ──────────────────────────────────────────────────────
 
-const API_BASE = "http://localhost:3000";
+const API_BASE = "https://overlink-web.vercel.app";
 
 async function fetchPlan(token: string): Promise<string> {
   try {
