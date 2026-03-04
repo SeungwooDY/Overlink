@@ -1,6 +1,7 @@
 import Link from "next/link";
 import NavBar from "./components/NavBar";
 import HeroCTA from "./components/HeroCTA";
+import GetProButton from "./components/GetProButton";
 
 // ── Decorative demo panel (mimics the extension overlay) ─────────────────────
 
@@ -251,13 +252,7 @@ export default function Home() {
                   <span style={{ color: "#60a5fa" }}>✓</span> {f}
                 </div>
               ))}
-              <Link href="/login" style={{
-                display: "block", marginTop: 20, textAlign: "center",
-                padding: "10px", borderRadius: 8, background: "#3b82f6",
-                color: "#fff", textDecoration: "none", fontSize: 14, fontWeight: 700,
-              }}>
-                Get Pro
-              </Link>
+              <GetProButton />
             </div>
           </div>
         </div>

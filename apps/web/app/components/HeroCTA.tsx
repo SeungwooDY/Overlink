@@ -23,7 +23,7 @@ export default function HeroCTA() {
   }, []);
 
   async function handleUpgrade() {
-    if (!token) return;
+    if (!token) { window.location.href = "/login"; return; }
     const res = await fetch("/api/stripe/checkout", {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },

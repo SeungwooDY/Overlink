@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
@@ -71,6 +72,9 @@ export default function LoginPage() {
           color: "#fff",
         }}
       >
+        <Link href="/" style={{ color: "rgba(255,255,255,0.35)", fontSize: 13, textDecoration: "none", display: "inline-block", marginBottom: 20 }}>
+          ← Back to home
+        </Link>
         <h1 style={{ fontSize: 20, fontWeight: 600, marginBottom: 4 }}>Overlink</h1>
         <p style={{ fontSize: 13, color: "rgba(255,255,255,0.4)", marginBottom: 24 }}>
           {mode === "signin" ? "Sign in to your account" : "Create a new account"}

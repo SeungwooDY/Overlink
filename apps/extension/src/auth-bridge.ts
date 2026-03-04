@@ -46,6 +46,16 @@ const initialSession = getSupabaseSession();
 console.log(`${LOG} Initial session: ${initialSession.token ? "present" : "none"}`);
 sendSession(initialSession);
 
+// Intercept localStorage.removeItem to catch sign-out in the same tab.
+const _origRemoveItem = localStorage.removeItem.bind(localStorage);
+localStorage.removeItem = function (key: string) {
+  _origRemoveItem(key);
+  if (key.startsWith("sb-") && key.endsWith("-auth-token")) {
+    console.log(`${LOG} Token removed (sign-out)`);
+    sendSession({ token: null, email: null });
+  }
+};
+
 // Intercept localStorage.setItem to catch same-tab token refreshes.
 // Supabase silently refreshes the access token in the same tab —
 // the native `storage` event only fires for OTHER tabs, so we miss it without this.
