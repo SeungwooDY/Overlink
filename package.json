@@ -6,5 +6,8 @@
     "apps/*",
     "packages/*"
   ],
-  "scripts": {}
+  "scripts": {},
+  "optionalDependencies": {
+    "lightningcss-linux-x64-gnu": "*"
+  }
 }
