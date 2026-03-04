@@ -7,6 +7,7 @@ export default function AuthCallbackPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    const supabase = createClient();
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
     const errorParam = params.get("error");
@@ -18,17 +19,23 @@ export default function AuthCallbackPage() {
     }
 
     if (code) {
-      createClient()
-        .auth.exchangeCodeForSession(code)
-        .then(({ error }) => {
-          if (error) {
-            setError(error.message);
-          } else {
-            window.location.href = "/";
-          }
-        });
+      // PKCE flow: exchange code for session
+      supabase.auth.exchangeCodeForSession(code).then(({ error }) => {
+        if (error) setError(error.message);
+        else window.location.href = "/";
+      });
     } else {
-      setError("No code parameter in callback URL. Check Supabase redirect URL configuration.");
+      // Implicit flow: supabase-js auto-processes the hash fragment (#access_token=...)
+      // Listen for the resulting SIGNED_IN event
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        if (event === "SIGNED_IN" && session) {
+          subscription.unsubscribe();
+          window.location.href = "/";
+        } else if (event === "INITIAL_SESSION" && !session) {
+          subscription.unsubscribe();
+          setError("No session returned. Check Supabase Auth flow type setting (should be PKCE).");
+        }
+      });
     }
   }, []);
 
