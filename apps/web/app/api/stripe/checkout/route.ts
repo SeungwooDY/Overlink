@@ -46,7 +46,7 @@ export async function POST(request: Request) {
       stripe_customer_id: customerId,
       plan: "free",
       status: "active",
-    });
+    }, { onConflict: "user_id" });
   }
 
   const session = await stripe.checkout.sessions.create({
