@@ -34,8 +34,9 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       setState({ email: session.user.email ?? null, plan, token: session.access_token });
     }
 
-    supabase.auth.getSession().then(({ data: { session } }) => load(session));
-
+    // onAuthStateChange fires immediately with INITIAL_SESSION (current session or null).
+    // Using this as the single code path avoids a race with getSession() where a null
+    // result can arrive after and overwrite a valid SIGNED_IN session.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       load(session);
     });

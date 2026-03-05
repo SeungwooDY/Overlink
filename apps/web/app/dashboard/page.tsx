@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 interface Meeting {
@@ -42,13 +43,9 @@ export default function DashboardPage() {
   const [searching, setSearching] = useState(false);
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Get folder from query string
-  const [folderId, setFolderId] = useState<string | null>(null);
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      setFolderId(new URLSearchParams(window.location.search).get("folder"));
-    }
-  }, []);
+  // Get folder from query string — reactive to URL changes
+  const searchParams = useSearchParams();
+  const folderId = searchParams.get("folder");
 
   useEffect(() => {
     createClient().auth.getSession().then(({ data: { session } }) => {

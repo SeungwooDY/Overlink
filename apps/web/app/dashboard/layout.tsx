@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
@@ -53,10 +53,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     setCreatingFolder(false);
   }
 
+  const searchParams = useSearchParams();
   const font = "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif";
 
   const navLink = (href: string, label: string) => {
-    const active = pathname === href;
+    // "All Meetings" is active only when on /dashboard with no folder param
+    const active = href === "/dashboard"
+      ? pathname === "/dashboard" && !searchParams.get("folder")
+      : pathname === href;
     return (
       <Link
         key={href}
@@ -105,7 +109,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <div style={{ color: "rgba(255,255,255,0.3)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", padding: "0 10px", marginBottom: 2 }}>Folders</div>
             {folders.map((f) => {
               const href = `/dashboard?folder=${f.id}`;
-              const active = pathname === "/dashboard" && typeof window !== "undefined" && new URLSearchParams(window.location.search).get("folder") === f.id;
+              const active = pathname === "/dashboard" && searchParams.get("folder") === f.id;
               return (
                 <Link key={f.id} href={href} style={{
                   display: "block",
