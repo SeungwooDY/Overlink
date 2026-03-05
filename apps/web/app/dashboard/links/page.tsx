@@ -15,10 +15,12 @@ interface LinkItem {
 export default function LinksPage() {
   const [links, setLinks] = useState<LinkItem[]>([]);
   const [token, setToken] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     createClient().auth.getSession().then(({ data: { session } }) => {
       if (session) setToken(session.access_token);
+      else setLoading(false);
     });
   }, []);
 
@@ -27,7 +29,7 @@ export default function LinksPage() {
     fetch("/api/meetings", { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => r.json())
       .then(async (meetings) => {
-        if (!Array.isArray(meetings)) return;
+        if (!Array.isArray(meetings)) { setLoading(false); return; }
         const allLinks: LinkItem[] = [];
         await Promise.all(
           meetings.map(async (m: { id: string; title: string }) => {
@@ -45,7 +47,8 @@ export default function LinksPage() {
         );
         allLinks.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
         setLinks(allLinks);
-      });
+      })
+      .finally(() => setLoading(false));
   }, [token]);
 
   const font = "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif";
@@ -54,7 +57,11 @@ export default function LinksPage() {
     <div style={{ fontFamily: font, maxWidth: 800 }}>
       <h1 style={{ fontSize: 24, fontWeight: 700, margin: "0 0 24px", letterSpacing: "-0.02em" }}>Links</h1>
 
-      {links.length === 0 ? (
+      {loading ? (
+        <div style={{ color: "rgba(255,255,255,0.25)", textAlign: "center", marginTop: 60, fontSize: 14 }}>
+          Loading…
+        </div>
+      ) : links.length === 0 ? (
         <div style={{ color: "rgba(255,255,255,0.35)", textAlign: "center", marginTop: 60 }}>
           No links saved yet
         </div>

@@ -15,10 +15,12 @@ interface PhoneItem {
 export default function PhonesPage() {
   const [items, setItems] = useState<PhoneItem[]>([]);
   const [token, setToken] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     createClient().auth.getSession().then(({ data: { session } }) => {
       if (session) setToken(session.access_token);
+      else setLoading(false);
     });
   }, []);
 
@@ -27,7 +29,7 @@ export default function PhonesPage() {
     fetch("/api/meetings", { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => r.json())
       .then(async (meetings) => {
-        if (!Array.isArray(meetings)) return;
+        if (!Array.isArray(meetings)) { setLoading(false); return; }
         const all: PhoneItem[] = [];
         await Promise.all(
           meetings.map(async (m: { id: string; title: string }) => {
@@ -43,7 +45,8 @@ export default function PhonesPage() {
         );
         all.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
         setItems(all);
-      });
+      })
+      .finally(() => setLoading(false));
   }, [token]);
 
   const font = "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif";
@@ -52,7 +55,11 @@ export default function PhonesPage() {
     <div style={{ fontFamily: font, maxWidth: 800 }}>
       <h1 style={{ fontSize: 24, fontWeight: 700, margin: "0 0 24px", letterSpacing: "-0.02em" }}>Phones</h1>
 
-      {items.length === 0 ? (
+      {loading ? (
+        <div style={{ color: "rgba(255,255,255,0.25)", textAlign: "center", marginTop: 60, fontSize: 14 }}>
+          Loading…
+        </div>
+      ) : items.length === 0 ? (
         <div style={{ color: "rgba(255,255,255,0.35)", textAlign: "center", marginTop: 60 }}>
           No phone numbers saved yet
         </div>

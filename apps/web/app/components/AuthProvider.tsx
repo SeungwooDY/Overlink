@@ -30,6 +30,11 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       const res = await fetch("/api/user/plan", {
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
+      if (res.status === 401) {
+        // Token rejected — stale session in localStorage, treat as signed out
+        setState({ email: null, plan: "free", token: null });
+        return;
+      }
       const plan: "free" | "pro" = res.ok ? (await res.json()).plan : "free";
       setState({ email: session.user.email ?? null, plan, token: session.access_token });
     }

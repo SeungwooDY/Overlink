@@ -21,10 +21,12 @@ interface ContactItem {
 export default function ContactsPage() {
   const [contacts, setContacts] = useState<ContactItem[]>([]);
   const [token, setToken] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     createClient().auth.getSession().then(({ data: { session } }) => {
       if (session) setToken(session.access_token);
+      else setLoading(false);
     });
   }, []);
 
@@ -33,7 +35,7 @@ export default function ContactsPage() {
     fetch("/api/meetings", { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => r.json())
       .then(async (meetings) => {
-        if (!Array.isArray(meetings)) return;
+        if (!Array.isArray(meetings)) { setLoading(false); return; }
         const allContacts: ContactItem[] = [];
         await Promise.all(
           meetings.map(async (m: { id: string; title: string }) => {
@@ -51,7 +53,8 @@ export default function ContactsPage() {
         );
         allContacts.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
         setContacts(allContacts);
-      });
+      })
+      .finally(() => setLoading(false));
   }, [token]);
 
   function downloadVCard(data: ContactItem["data"]) {
@@ -78,7 +81,11 @@ export default function ContactsPage() {
     <div style={{ fontFamily: font, maxWidth: 800 }}>
       <h1 style={{ fontSize: 24, fontWeight: 700, margin: "0 0 24px", letterSpacing: "-0.02em" }}>Contacts</h1>
 
-      {contacts.length === 0 ? (
+      {loading ? (
+        <div style={{ color: "rgba(255,255,255,0.25)", textAlign: "center", marginTop: 60, fontSize: 14 }}>
+          Loading…
+        </div>
+      ) : contacts.length === 0 ? (
         <div style={{ color: "rgba(255,255,255,0.35)", textAlign: "center", marginTop: 60 }}>
           No contacts saved yet
         </div>
