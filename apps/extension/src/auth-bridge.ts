@@ -81,8 +81,12 @@ localStorage.setItem = function (key: string, value: string) {
   if (key.startsWith("sb-") && key.endsWith("-auth-token")) {
     try {
       const parsed = JSON.parse(value);
+      const projectRef = key.slice(3, key.length - 11);
       const session: AuthSession = {
         token: parsed?.access_token ?? null,
+        refreshToken: parsed?.refresh_token ?? null,
+        expiresAt: parsed?.expires_at ?? null,
+        supabaseUrl: `https://${projectRef}.supabase.co`,
         email: parsed?.user?.email ?? null,
       };
       console.log(`${LOG} Token refreshed (setItem): ${session.token ? "present" : "none"}`);
@@ -98,12 +102,19 @@ window.addEventListener("storage", (e) => {
       ? (() => {
           try {
             const parsed = JSON.parse(e.newValue);
-            return { token: parsed?.access_token ?? null, email: parsed?.user?.email ?? null };
+            const projectRef = e.key!.slice(3, e.key!.length - 11);
+            return {
+              token: parsed?.access_token ?? null,
+              refreshToken: parsed?.refresh_token ?? null,
+              expiresAt: parsed?.expires_at ?? null,
+              supabaseUrl: `https://${projectRef}.supabase.co`,
+              email: parsed?.user?.email ?? null,
+            };
           } catch {
-            return { token: null, email: null };
+            return { token: null, refreshToken: null, expiresAt: null, supabaseUrl: null, email: null };
           }
         })()
-      : { token: null, email: null };
+      : { token: null, refreshToken: null, expiresAt: null, supabaseUrl: null, email: null };
     console.log(`${LOG} Session changed (cross-tab): ${session.token ? "present" : "none"}`);
     sendSession(session);
   }
