@@ -12,6 +12,23 @@ interface QRItem {
   meeting_title?: string;
 }
 
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
+      style={{
+        background: "none", border: "1px solid rgba(255,255,255,0.12)",
+        color: copied ? "#34d399" : "rgba(255,255,255,0.35)", fontSize: 11,
+        padding: "3px 8px", borderRadius: 5, cursor: "pointer", flexShrink: 0,
+        transition: "color 0.15s",
+      }}
+    >
+      {copied ? "Copied" : "Copy"}
+    </button>
+  );
+}
+
 export default function QRCodesPage() {
   const [items, setItems] = useState<QRItem[]>([]);
   const [token, setToken] = useState<string | null>(null);
@@ -95,6 +112,7 @@ export default function QRCodesPage() {
                 ) : (
                   <span style={{ color: "rgba(255,255,255,0.8)", flex: 1, wordBreak: "break-all", fontSize: 14 }}>{val}</span>
                 )}
+                <CopyButton text={val} />
                 <div style={{ textAlign: "right", flexShrink: 0 }}>
                   <Link
                     href={`/dashboard/meetings/${item.meeting_id}`}

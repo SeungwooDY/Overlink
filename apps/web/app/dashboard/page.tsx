@@ -157,10 +157,16 @@ function DashboardContent() {
                   display: "block", textDecoration: "none",
                   background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",
                   borderRadius: 10, padding: "16px 18px",
-                  transition: "border-color 0.15s",
+                  transition: "border-color 0.15s, background 0.15s",
                 }}
-                onMouseOver={(e) => (e.currentTarget.style.borderColor = "rgba(255,255,255,0.2)")}
-                onMouseOut={(e) => (e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)")}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.borderColor = "rgba(255,255,255,0.18)";
+                  e.currentTarget.style.background = "rgba(255,255,255,0.07)";
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)";
+                  e.currentTarget.style.background = "rgba(255,255,255,0.04)";
+                }}
               >
                 <div style={{ fontWeight: 600, fontSize: 15, color: "#fff", marginBottom: 6, wordBreak: "break-word" }}>{m.title}</div>
                 <div style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", marginBottom: 10 }}>

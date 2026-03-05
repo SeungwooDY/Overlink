@@ -11,6 +11,20 @@ interface Folder {
   parent_id: string | null;
 }
 
+const TYPE_COLORS: Record<string, string> = {
+  url: "#60a5fa", qr_code: "#34d399", email: "#c084fc",
+  phone: "#fb923c", event: "#fbbf24", contact: "#22d3ee",
+};
+
+const NAV_ITEMS = [
+  { href: "/dashboard/links",    label: "Links",     type: "url" },
+  { href: "/dashboard/qrcodes",  label: "QR Codes",  type: "qr_code" },
+  { href: "/dashboard/emails",   label: "Emails",    type: "email" },
+  { href: "/dashboard/phones",   label: "Phones",    type: "phone" },
+  { href: "/dashboard/events",   label: "Events",    type: "event" },
+  { href: "/dashboard/contacts", label: "Contacts",  type: "contact" },
+];
+
 const font = "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif";
 
 // Separated so useSearchParams() is inside a Suspense boundary (Next.js requirement)
@@ -22,6 +36,7 @@ function Sidebar() {
   const [token, setToken] = useState<string | null>(null);
   const [newFolderName, setNewFolderName] = useState("");
   const [creatingFolder, setCreatingFolder] = useState(false);
+  const [stats, setStats] = useState<Record<string, number>>({});
 
   useEffect(() => {
     createClient().auth.getSession().then(({ data: { session } }) => {
@@ -35,6 +50,9 @@ function Sidebar() {
     fetch("/api/folders", { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => r.json())
       .then((data) => setFolders(Array.isArray(data) ? data : []));
+    fetch("/api/dashboard/stats", { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.json())
+      .then((data) => { if (data && typeof data === "object") setStats(data); });
   }, [token]);
 
   async function createFolder() {
@@ -59,11 +77,20 @@ function Sidebar() {
       : pathname === href;
     return (
       <Link key={href} href={href} style={{
-        display: "block", padding: "6px 10px", borderRadius: 6,
+        display: "flex", alignItems: "center", gap: 9,
+        padding: "7px 10px", borderRadius: 7,
         color: active ? "#fff" : "rgba(255,255,255,0.5)",
         background: active ? "rgba(255,255,255,0.08)" : "transparent",
         textDecoration: "none", fontSize: 14, fontWeight: active ? 500 : 400,
+        transition: "background 0.15s, color 0.15s",
       }}>
+        <span style={{
+          width: 7, height: 7, borderRadius: "50%",
+          background: "rgba(255,255,255,0.6)",
+          opacity: active ? 1 : 0.3,
+          flexShrink: 0,
+          transition: "opacity 0.15s",
+        }} />
         {label}
       </Link>
     );
@@ -89,12 +116,41 @@ function Sidebar() {
       <div style={{ color: "rgba(255,255,255,0.3)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", padding: "0 10px", marginBottom: 2 }}>
         Saved Items
       </div>
-      {navLink("/dashboard/links", "Links")}
-      {navLink("/dashboard/qrcodes", "QR Codes")}
-      {navLink("/dashboard/emails", "Emails")}
-      {navLink("/dashboard/phones", "Phones")}
-      {navLink("/dashboard/events", "Events")}
-      {navLink("/dashboard/contacts", "Contacts")}
+      {NAV_ITEMS.map(({ href, label, type }) => {
+        const active = pathname === href;
+        const color = TYPE_COLORS[type];
+        const count = stats[type];
+        return (
+          <Link key={href} href={href} style={{
+            display: "flex", alignItems: "center", gap: 9,
+            padding: "7px 10px", borderRadius: 7,
+            color: active ? "#fff" : "rgba(255,255,255,0.5)",
+            background: active ? `${color}1a` : "transparent",
+            textDecoration: "none", fontSize: 14, fontWeight: active ? 500 : 400,
+            transition: "background 0.15s, color 0.15s",
+            boxShadow: active ? `inset 0 0 0 1px ${color}30` : "none",
+          }}>
+            <span style={{
+              width: 7, height: 7, borderRadius: "50%",
+              background: color,
+              opacity: active ? 1 : 0.35,
+              flexShrink: 0,
+              boxShadow: active ? `0 0 6px ${color}` : "none",
+              transition: "opacity 0.15s, box-shadow 0.15s",
+            }} />
+            <span style={{ flex: 1 }}>{label}</span>
+            {count > 0 && (
+              <span style={{
+                fontSize: 11, fontWeight: 600,
+                color: active ? color : "rgba(255,255,255,0.2)",
+                transition: "color 0.15s",
+              }}>
+                {count}
+              </span>
+            )}
+          </Link>
+        );
+      })}
 
       {folders.length > 0 && (
         <>
