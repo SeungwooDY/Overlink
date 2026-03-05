@@ -10,6 +10,9 @@ const LOG = "[Overlink AuthBridge]";
 
 interface AuthSession {
   token: string | null;
+  refreshToken: string | null;
+  expiresAt: number | null; // unix seconds
+  supabaseUrl: string | null;
   email: string | null;
 }
 
@@ -19,22 +22,35 @@ function getSupabaseSession(): AuthSession {
     if (key && key.startsWith("sb-") && key.endsWith("-auth-token")) {
       try {
         const raw = localStorage.getItem(key);
-        if (!raw) return { token: null, email: null };
+        if (!raw) return { token: null, refreshToken: null, expiresAt: null, supabaseUrl: null, email: null };
         const parsed = JSON.parse(raw);
+        // Derive Supabase project URL from the localStorage key: sb-{ref}-auth-token
+        const projectRef = key.slice(3, key.length - 11); // strip "sb-" prefix and "-auth-token" suffix
+        const supabaseUrl = `https://${projectRef}.supabase.co`;
         return {
           token: parsed?.access_token ?? null,
+          refreshToken: parsed?.refresh_token ?? null,
+          expiresAt: parsed?.expires_at ?? null,
+          supabaseUrl,
           email: parsed?.user?.email ?? null,
         };
       } catch {
-        return { token: null, email: null };
+        return { token: null, refreshToken: null, expiresAt: null, supabaseUrl: null, email: null };
       }
     }
   }
-  return { token: null, email: null };
+  return { token: null, refreshToken: null, expiresAt: null, supabaseUrl: null, email: null };
 }
 
 function sendSession(session: AuthSession): void {
-  chrome.runtime.sendMessage({ type: "SET_AUTH_TOKEN", token: session.token, email: session.email }, () => {
+  chrome.runtime.sendMessage({
+    type: "SET_AUTH_TOKEN",
+    token: session.token,
+    refreshToken: session.refreshToken,
+    expiresAt: session.expiresAt,
+    supabaseUrl: session.supabaseUrl,
+    email: session.email,
+  }, () => {
     if (chrome.runtime.lastError) {
       // Extension may not be ready — safe to ignore
     }
@@ -52,7 +68,7 @@ localStorage.removeItem = function (key: string) {
   _origRemoveItem(key);
   if (key.startsWith("sb-") && key.endsWith("-auth-token")) {
     console.log(`${LOG} Token removed (sign-out)`);
-    sendSession({ token: null, email: null });
+    sendSession({ token: null, refreshToken: null, expiresAt: null, supabaseUrl: null, email: null });
   }
 };
 

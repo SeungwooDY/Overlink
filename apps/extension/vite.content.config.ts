@@ -7,7 +7,13 @@ const __dirname = fileURLToPath(new URL(".", import.meta.url));
 // Monorepo root — node_modules is hoisted here
 const repoRoot = resolve(__dirname, "../..");
 
+const API_BASE =
+  process.env.API_BASE ?? "https://overlink-web.vercel.app";
+
 export default defineConfig({
+  define: {
+    __API_BASE__: JSON.stringify(API_BASE),
+  },
   build: {
     outDir: "dist",
     emptyOutDir: true,

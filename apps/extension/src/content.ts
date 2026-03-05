@@ -18,6 +18,23 @@ const DOMINANCE_RATIO = 3;        // Layer 2: top video must be 3× area of seco
 const MIN_INTRINSIC_WIDTH = 1280; // Layer 3: minimum screen-res width
 const MIN_RENDERED_PX = 200;      // sanity: skip hidden / collapsed video elements
 
+// ── Meeting state (per Google Meet room session) ──────────────────────────────
+let activeMeetingId: string | null = null;
+let activeMeetRoomCode: string | null = null;
+
+function getCurrentRoomCode(): string | null {
+  const path = window.location.pathname.slice(1);
+  return path || null;
+}
+
+function checkRoomChange(): void {
+  const code = getCurrentRoomCode();
+  if (code !== activeMeetRoomCode) {
+    activeMeetingId = null;
+    activeMeetRoomCode = code;
+  }
+}
+
 // ── 1. Video detection ────────────────────────────────────────────────────────
 
 function findScreenShareVideo(): HTMLVideoElement | null {
@@ -77,9 +94,12 @@ function findScreenShareVideo(): HTMLVideoElement | null {
     return null;
   }
 
-  // Layer 3: single video — require screen-level intrinsic resolution
-  if (pick.videoWidth >= MIN_INTRINSIC_WIDTH) {
-    console.log(`${LOG} Single video at ${pick.videoWidth}×${pick.videoHeight}, treating as screen share.`);
+  // Layer 3: single video — require screen-level intrinsic resolution.
+  // Portrait videos (height > width) are always screen shares on desktop — no webcam sends portrait.
+  // Landscape videos require width ≥ MIN_INTRINSIC_WIDTH to distinguish from webcams.
+  const isPortrait = pick.videoHeight > pick.videoWidth;
+  if (isPortrait || pick.videoWidth >= MIN_INTRINSIC_WIDTH) {
+    console.log(`${LOG} Single video at ${pick.videoWidth}×${pick.videoHeight}${isPortrait ? " (portrait)" : ""}, treating as screen share.`);
     return pick;
   }
 
@@ -126,6 +146,200 @@ function captureFrame(video: HTMLVideoElement): HTMLCanvasElement | null {
   }
 }
 
+
+// ── Save item + name-prompt modal ─────────────────────────────────────────────
+
+interface SaveableItem {
+  type: "url" | "qr_code" | "email" | "phone" | "event" | "contact";
+  data: Record<string, string>;
+}
+
+let namePromptEl: HTMLDivElement | null = null;
+
+function removeNamePrompt(): void {
+  namePromptEl?.remove();
+  namePromptEl = null;
+}
+
+function showNamePrompt(pendingItem: SaveableItem): void {
+  removeNamePrompt();
+
+  const now = new Date();
+  const defaultName = `Meeting — ${now.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+
+  const modal = document.createElement("div");
+  modal.style.cssText = [
+    "position:fixed",
+    "z-index:2147483648",
+    "top:50%",
+    "left:50%",
+    "transform:translate(-50%,-50%)",
+    "background:rgba(20,20,20,0.97)",
+    "border:1px solid rgba(255,255,255,0.15)",
+    "border-radius:12px",
+    "padding:20px 24px",
+    "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
+    "width:320px",
+    "box-shadow:0 8px 40px rgba(0,0,0,0.7)",
+  ].join(";");
+
+  function renderModal(content: string): void {
+    modal.innerHTML = content;
+  }
+
+  function renderForm(): void {
+    modal.innerHTML = "";
+
+    const title = document.createElement("div");
+    title.textContent = "Name this meeting";
+    title.style.cssText = "color:#fff;font-size:15px;font-weight:600;margin-bottom:12px;";
+    modal.appendChild(title);
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = defaultName;
+    input.style.cssText = [
+      "width:100%",
+      "box-sizing:border-box",
+      "background:rgba(255,255,255,0.07)",
+      "border:1px solid rgba(255,255,255,0.18)",
+      "border-radius:7px",
+      "color:#fff",
+      "font-size:14px",
+      "padding:8px 10px",
+      "outline:none",
+      "margin-bottom:14px",
+    ].join(";");
+    modal.appendChild(input);
+
+    const btnRow = document.createElement("div");
+    btnRow.style.cssText = "display:flex;justify-content:flex-end;gap:8px;";
+
+    const cancelBtn = document.createElement("button");
+    cancelBtn.textContent = "Cancel";
+    cancelBtn.style.cssText =
+      "background:none;border:1px solid rgba(255,255,255,0.15);color:rgba(255,255,255,0.5);font-size:13px;padding:6px 14px;border-radius:7px;cursor:pointer;";
+    cancelBtn.addEventListener("click", removeNamePrompt);
+
+    const saveBtn = document.createElement("button");
+    saveBtn.textContent = "Save";
+    saveBtn.style.cssText =
+      "background:#3b82f6;border:none;color:#fff;font-size:13px;font-weight:600;padding:6px 16px;border-radius:7px;cursor:pointer;";
+
+    saveBtn.addEventListener("click", async () => {
+      const name = input.value.trim() || defaultName;
+      saveBtn.disabled = true;
+      saveBtn.textContent = "Saving…";
+
+      const result = await chrome.runtime.sendMessage({
+        type: "CREATE_MEETING",
+        title: name,
+        meet_room_code: activeMeetRoomCode,
+      }) as { ok: boolean; meetingId?: string; error?: string };
+
+      if (result?.ok && result.meetingId) {
+        activeMeetingId = result.meetingId;
+        removeNamePrompt();
+        await doSaveItem(pendingItem);
+        showToast("Saved!");
+      } else if (result?.error === "limit_reached") {
+        renderModal("");
+        const msg = document.createElement("div");
+        msg.style.cssText = "color:#fff;font-size:14px;margin-bottom:12px;";
+        msg.textContent = "Free plan limit reached (3 meetings/month).";
+        modal.appendChild(msg);
+
+        const upgradeBtn = document.createElement("button");
+        upgradeBtn.textContent = "Upgrade to Pro";
+        upgradeBtn.style.cssText =
+          "background:#3b82f6;border:none;color:#fff;font-size:13px;font-weight:600;padding:7px 16px;border-radius:7px;cursor:pointer;margin-right:8px;";
+        upgradeBtn.addEventListener("click", () => {
+          chrome.runtime.sendMessage({ type: "OPEN_CHECKOUT" });
+          removeNamePrompt();
+        });
+
+        const closeBtn = document.createElement("button");
+        closeBtn.textContent = "Close";
+        closeBtn.style.cssText =
+          "background:none;border:1px solid rgba(255,255,255,0.15);color:rgba(255,255,255,0.5);font-size:13px;padding:7px 14px;border-radius:7px;cursor:pointer;";
+        closeBtn.addEventListener("click", removeNamePrompt);
+
+        const row = document.createElement("div");
+        row.style.cssText = "display:flex;";
+        row.appendChild(upgradeBtn);
+        row.appendChild(closeBtn);
+        modal.appendChild(row);
+      } else {
+        saveBtn.disabled = false;
+        saveBtn.textContent = "Save";
+        console.error(`${LOG} CREATE_MEETING failed:`, result?.error);
+      }
+    });
+
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") saveBtn.click();
+      if (e.key === "Escape") removeNamePrompt();
+    });
+
+    btnRow.appendChild(cancelBtn);
+    btnRow.appendChild(saveBtn);
+    modal.appendChild(btnRow);
+
+    setTimeout(() => { input.select(); }, 50);
+  }
+
+  renderForm();
+  document.body.appendChild(modal);
+  namePromptEl = modal;
+}
+
+async function doSaveItem(item: SaveableItem): Promise<void> {
+  if (!activeMeetingId) return;
+  const result = await chrome.runtime.sendMessage({
+    type: "SAVE_ITEM",
+    meetingId: activeMeetingId,
+    itemType: item.type,
+    data: item.data,
+  }) as { ok: boolean; error?: string };
+  if (!result?.ok) {
+    console.warn(`${LOG} SAVE_ITEM failed:`, result?.error);
+  }
+}
+
+async function handleSaveItem(item: SaveableItem): Promise<void> {
+  if (activeMeetingId) {
+    await doSaveItem(item);
+    showToast("Saved!");
+  } else {
+    showNamePrompt(item);
+  }
+}
+
+function showToast(message: string): void {
+  const toast = document.createElement("div");
+  toast.textContent = message;
+  toast.style.cssText = [
+    "position:fixed",
+    "bottom:24px",
+    "right:24px",
+    "z-index:2147483647",
+    "background:rgba(34,197,94,0.9)",
+    "color:#fff",
+    "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
+    "font-size:13px",
+    "font-weight:600",
+    "padding:8px 16px",
+    "border-radius:8px",
+    "box-shadow:0 4px 16px rgba(0,0,0,0.4)",
+    "pointer-events:none",
+    "transition:opacity 0.3s",
+  ].join(";");
+  document.body.appendChild(toast);
+  setTimeout(() => {
+    toast.style.opacity = "0";
+    setTimeout(() => toast.remove(), 400);
+  }, 1500);
+}
 
 // ── 4. Overlay ────────────────────────────────────────────────────────────────
 
@@ -254,8 +468,29 @@ function updateOverlay(
     overlayEl!.appendChild(el);
   }
 
-  function appendLink(payload: string, color: string): void {
+  const ghostBtnCss =
+    "color:rgba(255,255,255,0.45);font-size:10px;text-transform:uppercase;letter-spacing:0.05em;" +
+    "text-decoration:none;white-space:nowrap;border:1px solid rgba(255,255,255,0.18);" +
+    "padding:1px 5px;border-radius:4px;flex-shrink:0;background:none;cursor:pointer;";
+
+  function makeSaveBtn(item: SaveableItem): HTMLButtonElement {
+    const btn = document.createElement("button");
+    btn.textContent = "Save";
+    btn.style.cssText = ghostBtnCss;
+    btn.addEventListener("mouseover", () => (btn.style.color = "rgba(255,255,255,0.85)"));
+    btn.addEventListener("mouseout", () => (btn.style.color = "rgba(255,255,255,0.45)"));
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      handleSaveItem(item);
+    });
+    return btn;
+  }
+
+  function appendLink(payload: string, color: string, itemType: "url" | "qr_code"): void {
     const href = /^https?:\/\//i.test(payload) ? payload : `https://${payload}`;
+    const wrap = document.createElement("div");
+    wrap.style.cssText = "margin:2px 0;";
+
     const a = document.createElement("a");
     a.href = href;
     a.textContent = payload;
@@ -264,52 +499,61 @@ function updateOverlay(
     a.style.cssText = `display:block;color:${color};text-decoration:none;word-break:break-all;`;
     a.addEventListener("mouseover", () => (a.style.textDecoration = "underline"));
     a.addEventListener("mouseout", () => (a.style.textDecoration = "none"));
-    overlayEl!.appendChild(a);
+
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:flex;justify-content:flex-end;gap:4px;margin-top:2px;";
+    actions.appendChild(makeSaveBtn({ type: itemType, data: { value: payload } }));
+
+    wrap.appendChild(a);
+    wrap.appendChild(actions);
+    overlayEl!.appendChild(wrap);
   }
 
-  function appendEntityRow(label: string, href: string, actionText: string, color: string): void {
-    const row = document.createElement("div");
-    row.style.cssText = "display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin:1px 0;";
+  function appendEntityRow(label: string, href: string, actionText: string, color: string, saveItem: SaveableItem): void {
+    const wrap = document.createElement("div");
+    wrap.style.cssText = "margin:2px 0;";
 
     const span = document.createElement("span");
     span.textContent = label;
-    span.style.cssText = `color:${color};word-break:break-all;flex:1;min-width:0;`;
+    span.style.cssText = `display:block;color:${color};word-break:break-all;`;
+    wrap.appendChild(span);
+
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:flex;justify-content:flex-end;gap:4px;margin-top:2px;";
 
     const btn = document.createElement("a");
     btn.href = href;
     btn.textContent = actionText;
     btn.target = "_blank";
     btn.rel = "noopener noreferrer";
-    btn.style.cssText =
-      "color:rgba(255,255,255,0.45);font-size:10px;text-transform:uppercase;letter-spacing:0.05em;" +
-      "text-decoration:none;white-space:nowrap;border:1px solid rgba(255,255,255,0.18);" +
-      "padding:1px 5px;border-radius:4px;flex-shrink:0;";
+    btn.style.cssText = ghostBtnCss;
     btn.addEventListener("mouseover", () => (btn.style.color = "rgba(255,255,255,0.85)"));
     btn.addEventListener("mouseout", () => (btn.style.color = "rgba(255,255,255,0.45)"));
 
-    row.appendChild(span);
-    row.appendChild(btn);
-    overlayEl!.appendChild(row);
+    actions.appendChild(btn);
+    actions.appendChild(makeSaveBtn(saveItem));
+    wrap.appendChild(actions);
+    overlayEl!.appendChild(wrap);
   }
 
   if (urls.length > 0) {
     appendSectionLabel("Links");
-    for (const url of urls) appendLink(url, "#60a5fa");
+    for (const url of urls) appendLink(url, "#60a5fa", "url");
   }
 
   if (qrCodes.length > 0) {
     appendSectionLabel("QR Codes");
-    for (const code of qrCodes) appendLink(code, "#34d399");
+    for (const code of qrCodes) appendLink(code, "#34d399", "qr_code");
   }
 
   if (emails.length > 0) {
     appendSectionLabel("Emails");
-    for (const email of emails) appendEntityRow(email, `mailto:${email}`, "Compose", "#c084fc");
+    for (const email of emails) appendEntityRow(email, `mailto:${email}`, "Compose", "#c084fc", { type: "email", data: { value: email } });
   }
 
   if (phones.length > 0) {
     appendSectionLabel("Phones");
-    for (const phone of phones) appendEntityRow(phone, `tel:${phone.replace(/\s/g, "")}`, "Call", "#fb923c");
+    for (const phone of phones) appendEntityRow(phone, `tel:${phone.replace(/\s/g, "")}`, "Call", "#fb923c", { type: "phone", data: { value: phone } });
   }
 
   if (events.length > 0) {
@@ -362,7 +606,15 @@ function updateOverlay(
       if (ev.description) gcalParams.set("details", ev.description);
       if (ev.location) gcalParams.set("location", ev.location);
       const gcalUrl = `https://calendar.google.com/calendar/render?${gcalParams.toString()}`;
-      appendEntityRow(label || "(event)", gcalUrl, "Add", "#fbbf24");
+      const evData: Record<string, string> = {};
+      if (ev.title) evData.title = ev.title;
+      if (ev.date) evData.date = ev.date;
+      if (ev.time) evData.time = ev.time;
+      if (ev.end_time) evData.end_time = ev.end_time;
+      if (ev.timezone) evData.timezone = ev.timezone;
+      if (ev.location) evData.location = ev.location;
+      if (ev.description) evData.description = ev.description;
+      appendEntityRow(label || "(event)", gcalUrl, "Add", "#fbbf24", { type: "event", data: evData });
     }
   }
 
@@ -372,34 +624,27 @@ function updateOverlay(
       const label = [c.name, c.role && c.company ? `${c.role} @ ${c.company}` : c.company ?? c.role].filter(Boolean).join(" · ");
       const subLabel = [c.email, c.phone].filter(Boolean).join(" · ");
 
-      // vCard download button — inline handler
-      const row = document.createElement("div");
-      row.style.cssText = "display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin:1px 0;";
-
-      const textWrap = document.createElement("div");
-      textWrap.style.cssText = "flex:1;min-width:0;";
+      const wrap = document.createElement("div");
+      wrap.style.cssText = "margin:2px 0;";
 
       const span = document.createElement("span");
       span.textContent = label || "(contact)";
       span.style.cssText = "display:block;color:#22d3ee;word-break:break-all;";
-      textWrap.appendChild(span);
+      wrap.appendChild(span);
 
       if (subLabel) {
         const sub = document.createElement("span");
         sub.textContent = subLabel;
         sub.style.cssText = "display:block;color:rgba(255,255,255,0.35);font-size:11px;word-break:break-all;";
-        textWrap.appendChild(sub);
+        wrap.appendChild(sub);
       }
 
-      const btn = document.createElement("button");
-      btn.textContent = "Save";
-      btn.style.cssText =
-        "color:rgba(255,255,255,0.45);font-size:10px;text-transform:uppercase;letter-spacing:0.05em;" +
-        "background:none;border:1px solid rgba(255,255,255,0.18);padding:1px 5px;border-radius:4px;" +
-        "cursor:pointer;white-space:nowrap;flex-shrink:0;";
-      btn.addEventListener("mouseover", () => (btn.style.color = "rgba(255,255,255,0.85)"));
-      btn.addEventListener("mouseout", () => (btn.style.color = "rgba(255,255,255,0.45)"));
-      btn.addEventListener("click", () => {
+      const vcfBtn = document.createElement("button");
+      vcfBtn.textContent = "vCard";
+      vcfBtn.style.cssText = ghostBtnCss;
+      vcfBtn.addEventListener("mouseover", () => (vcfBtn.style.color = "rgba(255,255,255,0.85)"));
+      vcfBtn.addEventListener("mouseout", () => (vcfBtn.style.color = "rgba(255,255,255,0.45)"));
+      vcfBtn.addEventListener("click", () => {
         const vcf = [
           "BEGIN:VCARD",
           "VERSION:3.0",
@@ -420,9 +665,20 @@ function updateOverlay(
         URL.revokeObjectURL(a.href);
       });
 
-      row.appendChild(textWrap);
-      row.appendChild(btn);
-      overlayEl!.appendChild(row);
+      const cData: Record<string, string> = {};
+      if (c.name) cData.name = c.name;
+      if (c.email) cData.email = c.email;
+      if (c.phone) cData.phone = c.phone;
+      if (c.company) cData.company = c.company;
+      if (c.role) cData.role = c.role;
+
+      const actions = document.createElement("div");
+      actions.style.cssText = "display:flex;justify-content:flex-end;gap:4px;margin-top:2px;";
+      actions.appendChild(vcfBtn);
+      actions.appendChild(makeSaveBtn({ type: "contact", data: cData }));
+
+      wrap.appendChild(actions);
+      overlayEl!.appendChild(wrap);
     }
   }
 
@@ -460,6 +716,8 @@ function startPolling(ms: number): void {
 
 async function runPipeline(): Promise<void> {
   if (ocrRunning) return;
+
+  checkRoomChange();
 
   const video = findScreenShareVideo();
   if (!video) {

@@ -12,7 +12,10 @@
 const LOG = "[Overlink Background]";
 const OFFSCREEN_URL = chrome.runtime.getURL("offscreen.html");
 const OCR_TIMEOUT_MS = 60_000; // lang data CDN download can be slow on first run
-const API_BASE = "https://overlink-web.vercel.app";
+declare const __API_BASE__: string;
+declare const __SUPABASE_ANON_KEY__: string;
+const API_BASE = __API_BASE__;
+const SUPABASE_ANON_KEY = __SUPABASE_ANON_KEY__;
 
 console.log(`${LOG} Service worker started.`);
 
@@ -70,9 +73,45 @@ function sendToOffscreen(imageDataUrl: string): Promise<{ urls: string[]; elapse
 
 // ── Auth token helpers ────────────────────────────────────────────────────────
 
+async function refreshAuthToken(): Promise<string | null> {
+  const { refreshToken, supabaseUrl } = await chrome.storage.sync.get(["refreshToken", "supabaseUrl"]);
+  if (!refreshToken || !supabaseUrl) return null;
+
+  try {
+    const res = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+    if (!res.ok) {
+      console.warn(`${LOG} Token refresh failed: HTTP ${res.status}`);
+      return null;
+    }
+    const data = await res.json();
+    const newToken: string = data.access_token;
+    const newRefresh: string = data.refresh_token;
+    const expiresAt: number = data.expires_at ?? Math.floor(Date.now() / 1000) + 3600;
+    await chrome.storage.sync.set({ authToken: newToken, refreshToken: newRefresh, expiresAt });
+    console.log(`${LOG} Token refreshed successfully.`);
+    return newToken;
+  } catch (err) {
+    console.error(`${LOG} Token refresh error:`, err);
+    return null;
+  }
+}
+
 async function getAuthToken(): Promise<string | null> {
-  const { authToken } = await chrome.storage.sync.get("authToken");
-  return authToken ?? null;
+  const { authToken, expiresAt } = await chrome.storage.sync.get(["authToken", "expiresAt"]);
+  if (!authToken) return null;
+
+  // Refresh if expired or expiring within 5 minutes
+  const nowSecs = Math.floor(Date.now() / 1000);
+  if (expiresAt && nowSecs >= expiresAt - 300) {
+    console.log(`${LOG} Token expiring soon, refreshing…`);
+    return await refreshAuthToken();
+  }
+
+  return authToken;
 }
 
 // ── Message routing ───────────────────────────────────────────────────────────
@@ -97,9 +136,15 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     const email: string | null = message.email ?? null;
     console.log(`${LOG} SET_AUTH_TOKEN: ${token ? "storing" : "removing"}`);
     if (token) {
-      chrome.storage.sync.set({ authToken: token, userEmail: email ?? "" });
+      chrome.storage.sync.set({
+        authToken: token,
+        refreshToken: message.refreshToken ?? null,
+        expiresAt: message.expiresAt ?? null,
+        supabaseUrl: message.supabaseUrl ?? null,
+        userEmail: email ?? "",
+      });
     } else {
-      chrome.storage.sync.remove(["authToken", "userEmail", "userPlan"]);
+      chrome.storage.sync.remove(["authToken", "refreshToken", "expiresAt", "supabaseUrl", "userEmail", "userPlan"]);
     }
     return false;
   }
@@ -170,6 +215,78 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === "OPEN_LOGIN") {
     chrome.tabs.create({ url: `${API_BASE}/login` });
     return false;
+  }
+
+  if (message.type === "CREATE_MEETING") {
+    console.log(`${LOG} CREATE_MEETING received.`);
+
+    getAuthToken()
+      .then(async (token) => {
+        if (!token) {
+          sendResponse({ ok: false, error: "Not authenticated" });
+          return;
+        }
+        const res = await fetch(`${API_BASE}/api/meetings`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            title: message.title,
+            meet_room_code: message.meet_room_code ?? null,
+          }),
+        });
+        if (res.status === 403) {
+          const body = await res.json().catch(() => ({}));
+          sendResponse({ ok: false, error: body.error ?? "limit_reached" });
+          return;
+        }
+        if (!res.ok) {
+          sendResponse({ ok: false, error: `HTTP ${res.status}` });
+          return;
+        }
+        const data = await res.json();
+        sendResponse({ ok: true, meetingId: data.id });
+      })
+      .catch((err) => {
+        console.error(`${LOG} CREATE_MEETING failed:`, err);
+        sendResponse({ ok: false, error: String(err) });
+      });
+
+    return true;
+  }
+
+  if (message.type === "SAVE_ITEM") {
+    console.log(`${LOG} SAVE_ITEM received (meeting ${message.meetingId}).`);
+
+    getAuthToken()
+      .then(async (token) => {
+        if (!token) {
+          sendResponse({ ok: false, error: "Not authenticated" });
+          return;
+        }
+        const res = await fetch(`${API_BASE}/api/meetings/${message.meetingId}/items`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ type: message.itemType, data: message.data }),
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          sendResponse({ ok: false, error: body.error ?? `HTTP ${res.status}` });
+          return;
+        }
+        sendResponse({ ok: true });
+      })
+      .catch((err) => {
+        console.error(`${LOG} SAVE_ITEM failed:`, err);
+        sendResponse({ ok: false, error: String(err) });
+      });
+
+    return true;
   }
 
   return false;

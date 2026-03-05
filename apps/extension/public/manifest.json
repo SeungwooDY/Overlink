@@ -12,7 +12,8 @@
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
   },
   "host_permissions": [
-    "https://overlink-web.vercel.app/*"
+    "https://overlink-web.vercel.app/*",
+    "http://localhost:3000/*"
   ],
   "content_scripts": [
     {
@@ -21,7 +22,10 @@
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://overlink-web.vercel.app/*"],
+      "matches": [
+        "https://overlink-web.vercel.app/*",
+        "http://localhost:3000/*"
+      ],
       "js": ["auth-bridge.js"],
       "run_at": "document_idle",
       "type": "module"

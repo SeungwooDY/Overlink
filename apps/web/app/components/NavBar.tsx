@@ -60,6 +60,7 @@ export default function NavBar() {
         ) : plan === "pro" ? (
           // Signed in — Pro
           <>
+            <Link href="/dashboard" style={{ color: "rgba(255,255,255,0.55)", fontSize: 14, textDecoration: "none" }}>Dashboard</Link>
             <span style={{ color: "rgba(255,255,255,0.5)", fontSize: 13 }}>{email}</span>
             <span style={{
               background: "#22c55e", color: "#fff", fontSize: 11, fontWeight: 700,
@@ -75,6 +76,7 @@ export default function NavBar() {
         ) : (
           // Signed in — Free
           <>
+            <Link href="/dashboard" style={{ color: "rgba(255,255,255,0.55)", fontSize: 14, textDecoration: "none" }}>Dashboard</Link>
             <span style={{ color: "rgba(255,255,255,0.5)", fontSize: 13 }}>{email}</span>
             <Link href="/login" style={{
               background: "rgba(59,130,246,0.15)", border: "1px solid rgba(59,130,246,0.4)",

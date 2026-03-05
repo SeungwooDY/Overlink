@@ -10,7 +10,8 @@ const DEFAULT_MS = 5_000;
 
 // ── Auth state rendering ──────────────────────────────────────────────────────
 
-const API_BASE = "https://overlink-web.vercel.app";
+declare const __API_BASE__: string;
+const API_BASE = __API_BASE__;
 
 async function fetchPlan(token: string): Promise<string> {
   try {
@@ -52,6 +53,19 @@ async function renderAuthSection(): Promise<void> {
   emailSpan.className = "auth-email";
   emailSpan.textContent = userEmail ?? "Signed in";
   section.appendChild(emailSpan);
+
+  // View Dashboard button (all signed-in users)
+  const dashBtn = document.createElement("button");
+  dashBtn.textContent = "View Dashboard";
+  dashBtn.className = "auth-btn";
+  dashBtn.style.flex = "none";
+  dashBtn.style.width = "auto";
+  dashBtn.style.padding = "4px 10px";
+  dashBtn.style.fontSize = "11px";
+  dashBtn.addEventListener("click", () => {
+    chrome.tabs.create({ url: `${API_BASE}/dashboard` });
+  });
+  section.appendChild(dashBtn);
 
   if (userPlan === "pro") {
     // Pro badge
