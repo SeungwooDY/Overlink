@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -35,7 +35,7 @@ const TYPE_COLORS: Record<string, string> = {
   contact: "#22d3ee",
 };
 
-export default function DashboardPage() {
+function DashboardContent() {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [token, setToken] = useState<string | null>(null);
   const [q, setQ] = useState("");
@@ -189,5 +189,13 @@ export default function DashboardPage() {
         )
       )}
     </div>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense>
+      <DashboardContent />
+    </Suspense>
   );
 }

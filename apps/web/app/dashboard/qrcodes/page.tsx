@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
-interface LinkItem {
+interface QRItem {
   id: string;
   data: { value?: string };
   created_at: string;
@@ -12,8 +12,8 @@ interface LinkItem {
   meeting_title?: string;
 }
 
-export default function LinksPage() {
-  const [links, setLinks] = useState<LinkItem[]>([]);
+export default function QRCodesPage() {
+  const [items, setItems] = useState<QRItem[]>([]);
   const [token, setToken] = useState<string | null>(null);
 
   useEffect(() => {
@@ -28,23 +28,21 @@ export default function LinksPage() {
       .then((r) => r.json())
       .then(async (meetings) => {
         if (!Array.isArray(meetings)) return;
-        const allLinks: LinkItem[] = [];
+        const all: QRItem[] = [];
         await Promise.all(
           meetings.map(async (m: { id: string; title: string }) => {
             const r = await fetch(`/api/meetings/${m.id}/items`, {
               headers: { Authorization: `Bearer ${token}` },
             });
             if (!r.ok) return;
-            const items = await r.json();
-            for (const item of items) {
-              if (item.type === "url") {
-                allLinks.push({ ...item, meeting_title: m.title });
-              }
+            const itemsData = await r.json();
+            for (const item of itemsData) {
+              if (item.type === "qr_code") all.push({ ...item, meeting_title: m.title });
             }
           })
         );
-        allLinks.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-        setLinks(allLinks);
+        all.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        setItems(all);
       });
   }, [token]);
 
@@ -52,16 +50,17 @@ export default function LinksPage() {
 
   return (
     <div style={{ fontFamily: font, maxWidth: 800 }}>
-      <h1 style={{ fontSize: 24, fontWeight: 700, margin: "0 0 24px", letterSpacing: "-0.02em" }}>Links</h1>
+      <h1 style={{ fontSize: 24, fontWeight: 700, margin: "0 0 24px", letterSpacing: "-0.02em" }}>QR Codes</h1>
 
-      {links.length === 0 ? (
+      {items.length === 0 ? (
         <div style={{ color: "rgba(255,255,255,0.35)", textAlign: "center", marginTop: 60 }}>
-          No links saved yet
+          No QR codes saved yet
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {links.map((item) => {
-            const href = /^https?:\/\//i.test(item.data.value ?? "") ? item.data.value : `https://${item.data.value}`;
+          {items.map((item) => {
+            const val = item.data.value ?? "";
+            const isUrl = /^https?:\/\//i.test(val);
             return (
               <div
                 key={item.id}
@@ -71,16 +70,24 @@ export default function LinksPage() {
                   background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",
                 }}
               >
-                <a
-                  href={href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ color: "#60a5fa", flex: 1, wordBreak: "break-all", fontSize: 14, textDecoration: "none" }}
-                  onMouseOver={(e) => (e.currentTarget.style.textDecoration = "underline")}
-                  onMouseOut={(e) => (e.currentTarget.style.textDecoration = "none")}
-                >
-                  {item.data.value}
-                </a>
+                <span style={{
+                  fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em",
+                  color: "#34d399", minWidth: 24, opacity: 0.8,
+                }}>QR</span>
+                {isUrl ? (
+                  <a
+                    href={val}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: "#34d399", flex: 1, wordBreak: "break-all", fontSize: 14, textDecoration: "none" }}
+                    onMouseOver={(e) => (e.currentTarget.style.textDecoration = "underline")}
+                    onMouseOut={(e) => (e.currentTarget.style.textDecoration = "none")}
+                  >
+                    {val}
+                  </a>
+                ) : (
+                  <span style={{ color: "rgba(255,255,255,0.8)", flex: 1, wordBreak: "break-all", fontSize: 14 }}>{val}</span>
+                )}
                 <div style={{ textAlign: "right", flexShrink: 0 }}>
                   <Link
                     href={`/dashboard/meetings/${item.meeting_id}`}
