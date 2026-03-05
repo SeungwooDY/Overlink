@@ -1,17 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useState } from "react";
+import { useAuth } from "./AuthProvider";
 
 export default function GetProButton() {
-  const [token, setToken] = useState<string | null>(null);
+  const { token } = useAuth();
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    createClient().auth.getSession().then(({ data: { session } }) => {
-      setToken(session?.access_token ?? null);
-    });
-  }, []);
 
   async function handleClick() {
     if (!token) { window.location.href = "/login"; return; }

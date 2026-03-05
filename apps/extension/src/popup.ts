@@ -28,8 +28,9 @@ async function fetchPlan(token: string): Promise<string> {
 }
 
 async function renderAuthSection(): Promise<void> {
-  const { authToken, userEmail } =
-    await chrome.storage.sync.get(["authToken", "userEmail"]);
+  // Go through background so expired tokens are refreshed before we use them
+  const { token: authToken } = await chrome.runtime.sendMessage({ type: "GET_TOKEN" }) as { token: string | null };
+  const { userEmail } = await chrome.storage.sync.get("userEmail");
 
   const userPlan = authToken ? await fetchPlan(authToken) : "free";
 

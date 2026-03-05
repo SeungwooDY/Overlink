@@ -1,26 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "./AuthProvider";
 
 export default function HeroCTA() {
-  const [email, setEmail] = useState<string | null>(null);
-  const [plan, setPlan] = useState<"free" | "pro" | null>(null);
-  const [token, setToken] = useState<string | null>(null);
-
-  useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (!session) { setPlan("free"); return; }
-      setEmail(session.user.email ?? null);
-      setToken(session.access_token);
-      const res = await fetch("/api/user/plan", {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      });
-      setPlan(res.ok ? (await res.json()).plan : "free");
-    });
-  }, []);
+  const { email, plan, token } = useAuth();
 
   async function handleUpgrade() {
     if (!token) { window.location.href = "/login"; return; }
@@ -48,7 +32,10 @@ export default function HeroCTA() {
         Add to Chrome — it&apos;s free
       </a>
 
-      {!email ? (
+      {/* Hold space while loading to avoid layout shift */}
+      {plan === null ? (
+        <div style={{ width: 120, height: 50 }} />
+      ) : !email ? (
         <Link href="/login" style={{
           background: "rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.7)",
           border: "1px solid rgba(255,255,255,0.12)",

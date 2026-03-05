@@ -217,6 +217,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return false;
   }
 
+  if (message.type === "GET_TOKEN") {
+    getAuthToken()
+      .then((token) => sendResponse({ token }))
+      .catch(() => sendResponse({ token: null }));
+    return true;
+  }
+
   if (message.type === "CREATE_MEETING") {
     console.log(`${LOG} CREATE_MEETING received.`);
 

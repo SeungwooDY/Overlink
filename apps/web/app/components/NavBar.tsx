@@ -1,39 +1,29 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-
-type Plan = "free" | "pro" | null; // null = not loaded yet
+import { useAuth } from "./AuthProvider";
 
 export default function NavBar() {
-  const [email, setEmail] = useState<string | null>(null);
-  const [plan, setPlan] = useState<Plan>(null);
-
-  useEffect(() => {
-    const supabase = createClient();
-
-    async function loadPlan(session: { access_token: string; user: { email?: string } } | null) {
-      if (!session) { setEmail(null); setPlan("free"); return; }
-      setEmail(session.user.email ?? null);
-      const res = await fetch("/api/user/plan", {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      });
-      setPlan(res.ok ? (await res.json()).plan : "free");
-    }
-
-    // Initial session check
-    supabase.auth.getSession().then(({ data: { session } }) => loadPlan(session));
-
-    // Keep UI in sync whenever auth state changes (OAuth redirect, sign-out, token refresh)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      loadPlan(session);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
+  const { email, plan } = useAuth();
   const font = "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+
+  // plan === null means still loading — render nothing to avoid flash
+  if (plan === null) {
+    return (
+      <nav style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "0 40px", height: 60,
+        borderBottom: "1px solid rgba(255,255,255,0.07)",
+        position: "sticky", top: 0, background: "rgba(10,10,10,0.85)",
+        backdropFilter: "blur(12px)", zIndex: 100, fontFamily: font,
+      }}>
+        <Link href="/" style={{ fontWeight: 700, fontSize: 16, letterSpacing: "-0.02em", color: "#fff", textDecoration: "none" }}>
+          Overlink
+        </Link>
+      </nav>
+    );
+  }
 
   return (
     <nav style={{
@@ -49,7 +39,6 @@ export default function NavBar() {
 
       <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
         {!email ? (
-          // Signed out
           <>
             <Link href="/login" style={{ color: "rgba(255,255,255,0.55)", fontSize: 14, textDecoration: "none" }}>Sign in</Link>
             <Link href="/login" style={{
@@ -58,7 +47,6 @@ export default function NavBar() {
             }}>Get started</Link>
           </>
         ) : plan === "pro" ? (
-          // Signed in — Pro
           <>
             <Link href="/dashboard" style={{ color: "rgba(255,255,255,0.55)", fontSize: 14, textDecoration: "none" }}>Dashboard</Link>
             <span style={{ color: "rgba(255,255,255,0.5)", fontSize: 13 }}>{email}</span>
@@ -74,7 +62,6 @@ export default function NavBar() {
             </button>
           </>
         ) : (
-          // Signed in — Free
           <>
             <Link href="/dashboard" style={{ color: "rgba(255,255,255,0.55)", fontSize: 14, textDecoration: "none" }}>Dashboard</Link>
             <span style={{ color: "rgba(255,255,255,0.5)", fontSize: 13 }}>{email}</span>

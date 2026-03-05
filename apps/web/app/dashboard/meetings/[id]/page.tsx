@@ -96,6 +96,47 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
     if (res.ok) setItems((prev) => prev.filter((i) => i.id !== itemId));
   }
 
+  function buildGcalUrl(data: Record<string, string>): string {
+    function parseTimeTo24h(t: string): { hh: string; mm: string } {
+      const ampm = t.match(/(\d{1,2}):?(\d{0,2})\s*(am|pm)/i);
+      if (ampm) {
+        let h = parseInt(ampm[1]);
+        const m = parseInt(ampm[2] || "0");
+        if (/pm/i.test(ampm[3]) && h !== 12) h += 12;
+        if (/am/i.test(ampm[3]) && h === 12) h = 0;
+        return { hh: String(h).padStart(2, "0"), mm: String(m).padStart(2, "0") };
+      }
+      const parts = t.split(":");
+      return { hh: parts[0].padStart(2, "0"), mm: (parts[1] ?? "00").slice(0, 2).padStart(2, "0") };
+    }
+
+    let datesParam = "";
+    if (data.date) {
+      const d = data.date.replace(/-/g, "");
+      if (data.time) {
+        const { hh, mm } = parseTimeTo24h(data.time);
+        let endHH: string, endMM: string;
+        if (data.end_time) {
+          const parsed = parseTimeTo24h(data.end_time);
+          endHH = parsed.hh; endMM = parsed.mm;
+        } else {
+          endHH = String((parseInt(hh) + 1) % 24).padStart(2, "0");
+          endMM = mm;
+        }
+        datesParam = `${d}T${hh}${mm}00/${d}T${endHH}${endMM}00`;
+      } else {
+        datesParam = `${d}/${d}`;
+      }
+    }
+
+    const p = new URLSearchParams({ action: "TEMPLATE" });
+    if (data.title) p.set("text", data.title);
+    if (datesParam) p.set("dates", datesParam);
+    if (data.description) p.set("details", data.description);
+    if (data.location) p.set("location", data.location);
+    return `https://calendar.google.com/calendar/render?${p.toString()}`;
+  }
+
   function downloadVCard(data: Record<string, string>) {
     const vcf = [
       "BEGIN:VCARD", "VERSION:3.0",
@@ -231,7 +272,7 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
                         <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 12, marginTop: 4 }}>{item.data.description}</div>
                       )}
                       <a
-                        href={`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(item.data.title ?? "")}`}
+                        href={buildGcalUrl(item.data)}
                         target="_blank" rel="noopener noreferrer"
                         style={{ display: "inline-block", marginTop: 6, fontSize: 11, color: "rgba(255,255,255,0.45)", border: "1px solid rgba(255,255,255,0.18)", padding: "1px 6px", borderRadius: 4, textDecoration: "none" }}
                       >Add to Calendar</a>
