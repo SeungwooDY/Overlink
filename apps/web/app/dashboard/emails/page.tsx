@@ -1,75 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
-
-interface EmailItem {
-  id: string;
-  data: { value?: string };
-  created_at: string;
-  meeting_id: string;
-  meeting_title?: string;
-}
-
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <button
-      onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
-      style={{
-        background: "none", border: "1px solid rgba(255,255,255,0.12)",
-        color: copied ? "#34d399" : "rgba(255,255,255,0.35)", fontSize: 11,
-        padding: "3px 8px", borderRadius: 5, cursor: "pointer", flexShrink: 0,
-        transition: "color 0.15s",
-      }}
-    >
-      {copied ? "Copied" : "Copy"}
-    </button>
-  );
-}
+import { CopyButton } from "@/app/components/CopyButton";
+import { useSavedItems } from "@/lib/hooks/useSavedItems";
+import { SYSTEM_FONT } from "@/lib/constants";
 
 export default function EmailsPage() {
-  const [items, setItems] = useState<EmailItem[]>([]);
-  const [token, setToken] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    createClient().auth.getSession().then(({ data: { session } }) => {
-      if (session) setToken(session.access_token);
-      else setLoading(false);
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!token) return;
-    fetch("/api/meetings", { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => r.json())
-      .then(async (meetings) => {
-        if (!Array.isArray(meetings)) { setLoading(false); return; }
-        const all: EmailItem[] = [];
-        await Promise.all(
-          meetings.map(async (m: { id: string; title: string }) => {
-            const r = await fetch(`/api/meetings/${m.id}/items`, {
-              headers: { Authorization: `Bearer ${token}` },
-            });
-            if (!r.ok) return;
-            const itemsData = await r.json();
-            for (const item of itemsData) {
-              if (item.type === "email") all.push({ ...item, meeting_title: m.title });
-            }
-          })
-        );
-        all.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-        setItems(all);
-      })
-      .finally(() => setLoading(false));
-  }, [token]);
-
-  const font = "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif";
+  const { items, loading } = useSavedItems("email");
 
   return (
-    <div style={{ fontFamily: font, maxWidth: 800 }}>
+    <div style={{ fontFamily: SYSTEM_FONT, maxWidth: 800 }}>
       <h1 style={{ fontSize: 24, fontWeight: 700, margin: "0 0 24px", letterSpacing: "-0.02em" }}>Emails</h1>
 
       {loading ? (

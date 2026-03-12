@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { use, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { TYPE_COLORS, SYSTEM_FONT } from "@/lib/constants";
+import { buildGcalUrl, downloadVCard } from "@/lib/utils";
 
 interface SavedItem {
   id: string;
@@ -28,15 +30,6 @@ const TAB_LABELS: Record<string, string> = {
   contact: "Contacts",
 };
 
-const TYPE_COLORS: Record<string, string> = {
-  url: "#60a5fa",
-  qr_code: "#34d399",
-  email: "#c084fc",
-  phone: "#fb923c",
-  event: "#fbbf24",
-  contact: "#22d3ee",
-};
-
 const TAB_ORDER = ["url", "qr_code", "email", "phone", "event", "contact"];
 
 export default function MeetingDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -58,15 +51,14 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
   useEffect(() => {
     if (!token) return;
     Promise.all([
-      fetch(`/api/meetings`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json()),
+      fetch(`/api/meetings/${id}`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json()),
       fetch(`/api/meetings/${id}/items`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json()),
-    ]).then(([meetings, itemsData]) => {
-      const m = Array.isArray(meetings) ? meetings.find((x: Meeting) => x.id === id) : null;
+    ]).then(([meetingData, itemsData]) => {
+      const m = meetingData?.id ? meetingData : null;
       setMeeting(m ?? null);
       setTitleInput(m?.title ?? "");
       const arr = Array.isArray(itemsData) ? itemsData : [];
       setItems(arr);
-      // Set default tab to first type present
       const firstType = TAB_ORDER.find((t) => arr.some((i: SavedItem) => i.type === t));
       if (firstType) setActiveTab(firstType);
     });
@@ -96,75 +88,15 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
     if (res.ok) setItems((prev) => prev.filter((i) => i.id !== itemId));
   }
 
-  function buildGcalUrl(data: Record<string, string>): string {
-    function parseTimeTo24h(t: string): { hh: string; mm: string } {
-      const ampm = t.match(/(\d{1,2}):?(\d{0,2})\s*(am|pm)/i);
-      if (ampm) {
-        let h = parseInt(ampm[1]);
-        const m = parseInt(ampm[2] || "0");
-        if (/pm/i.test(ampm[3]) && h !== 12) h += 12;
-        if (/am/i.test(ampm[3]) && h === 12) h = 0;
-        return { hh: String(h).padStart(2, "0"), mm: String(m).padStart(2, "0") };
-      }
-      const parts = t.split(":");
-      return { hh: parts[0].padStart(2, "0"), mm: (parts[1] ?? "00").slice(0, 2).padStart(2, "0") };
-    }
-
-    let datesParam = "";
-    if (data.date) {
-      const d = data.date.replace(/-/g, "");
-      if (data.time) {
-        const { hh, mm } = parseTimeTo24h(data.time);
-        let endHH: string, endMM: string;
-        if (data.end_time) {
-          const parsed = parseTimeTo24h(data.end_time);
-          endHH = parsed.hh; endMM = parsed.mm;
-        } else {
-          endHH = String((parseInt(hh) + 1) % 24).padStart(2, "0");
-          endMM = mm;
-        }
-        datesParam = `${d}T${hh}${mm}00/${d}T${endHH}${endMM}00`;
-      } else {
-        datesParam = `${d}/${d}`;
-      }
-    }
-
-    const p = new URLSearchParams({ action: "TEMPLATE" });
-    if (data.title) p.set("text", data.title);
-    if (datesParam) p.set("dates", datesParam);
-    if (data.description) p.set("details", data.description);
-    if (data.location) p.set("location", data.location);
-    return `https://calendar.google.com/calendar/render?${p.toString()}`;
-  }
-
-  function downloadVCard(data: Record<string, string>) {
-    const vcf = [
-      "BEGIN:VCARD", "VERSION:3.0",
-      data.name ? `FN:${data.name}` : "",
-      data.email ? `EMAIL:${data.email}` : "",
-      data.phone ? `TEL:${data.phone}` : "",
-      data.company ? `ORG:${data.company}` : "",
-      data.role ? `TITLE:${data.role}` : "",
-      "END:VCARD",
-    ].filter(Boolean).join("\n");
-    const blob = new Blob([vcf], { type: "text/vcard" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `${data.name ?? "contact"}.vcf`;
-    a.click();
-    URL.revokeObjectURL(a.href);
-  }
-
   const availableTabs = TAB_ORDER.filter((t) => items.some((i) => i.type === t));
   const tabItems = items.filter((i) => i.type === activeTab);
-  const font = "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif";
 
   if (!meeting) {
-    return <div style={{ fontFamily: font, color: "rgba(255,255,255,0.4)", paddingTop: 60, textAlign: "center" }}>Loading…</div>;
+    return <div style={{ fontFamily: SYSTEM_FONT, color: "rgba(255,255,255,0.4)", paddingTop: 60, textAlign: "center" }}>Loading…</div>;
   }
 
   return (
-    <div style={{ fontFamily: font, maxWidth: 800 }}>
+    <div style={{ fontFamily: SYSTEM_FONT, maxWidth: 800 }}>
       {/* Breadcrumb */}
       <div style={{ fontSize: 13, color: "rgba(255,255,255,0.4)", marginBottom: 16, display: "flex", gap: 6, alignItems: "center" }}>
         <Link href="/dashboard" style={{ color: "rgba(255,255,255,0.4)", textDecoration: "none" }}>Dashboard</Link>

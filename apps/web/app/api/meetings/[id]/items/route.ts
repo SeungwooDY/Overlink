@@ -1,23 +1,7 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-
-const supabaseAnon = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { getUser, supabase } from "@/lib/api/auth";
 
 const VALID_TYPES = ["url", "qr_code", "email", "phone", "event", "contact"];
-
-async function getUser(request: Request) {
-  const token = request.headers.get("Authorization")?.replace("Bearer ", "");
-  if (!token) return null;
-  const { data: { user } } = await supabaseAnon.auth.getUser(token);
-  return user;
-}
 
 export async function GET(
   request: Request,

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { TYPE_COLORS, SYSTEM_FONT } from "@/lib/constants";
 
 interface Meeting {
   id: string;
@@ -25,15 +26,6 @@ interface SearchResult {
   created_at: string;
   item_type?: string;
 }
-
-const TYPE_COLORS: Record<string, string> = {
-  url: "#60a5fa",
-  qr_code: "#34d399",
-  email: "#c084fc",
-  phone: "#fb923c",
-  event: "#fbbf24",
-  contact: "#22d3ee",
-};
 
 function DashboardContent() {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
@@ -81,10 +73,8 @@ function DashboardContent() {
     ? meetings.filter((m) => m.folder_id === folderId)
     : meetings;
 
-  const font = "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif";
-
   return (
-    <div style={{ fontFamily: font, maxWidth: 900 }}>
+    <div style={{ fontFamily: SYSTEM_FONT, maxWidth: 900 }}>
       <h1 style={{ fontSize: 24, fontWeight: 700, margin: "0 0 24px", letterSpacing: "-0.02em" }}>
         {folderId ? meetings.find((m) => m.folder_id === folderId)?.folder_name ?? "Folder" : "All Meetings"}
       </h1>

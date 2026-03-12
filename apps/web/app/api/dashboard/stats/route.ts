@@ -1,21 +1,9 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-
-const supabaseAnon = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { getUser, supabase } from "@/lib/api/auth";
 
 export async function GET(request: Request) {
-  const token = request.headers.get("Authorization")?.replace("Bearer ", "");
-  if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const { data: { user }, error } = await supabaseAnon.auth.getUser(token);
-  if (error || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const user = await getUser(request);
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { data } = await supabase
     .from("saved_items")

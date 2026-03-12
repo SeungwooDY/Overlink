@@ -1,42 +1,21 @@
 import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
-import { createClient } from "@supabase/supabase-js";
+import { getUser, supabase } from "@/lib/api/auth";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
-// Anon client — validates Bearer JWTs (requests come from extension, no cookies)
-const supabaseAnon = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
-// Service-role client — bypasses RLS for usage tracking
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
 
 const MONTHLY_CAP = 1_000;
 
 export async function POST(request: Request) {
   // 1. Auth
-  const authHeader = request.headers.get("Authorization");
-  const token = authHeader?.replace("Bearer ", "");
-  if (!token) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const { data: { user }, error: authError } = await supabaseAnon.auth.getUser(token);
-  if (authError || !user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const userId = user.id;
+  const user = await getUser(request);
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   // 2. Pro check
   const { data: sub } = await supabase
     .from("subscriptions")
     .select("plan, status")
-    .eq("user_id", userId)
+    .eq("user_id", user.id)
     .single();
 
   if (!sub || sub.plan !== "pro" || sub.status !== "active") {
@@ -51,7 +30,7 @@ export async function POST(request: Request) {
   const { data: usage } = await supabase
     .from("usage")
     .select("calls_used")
-    .eq("user_id", userId)
+    .eq("user_id", user.id)
     .eq("period_start", periodStart.toISOString())
     .single();
 
@@ -100,7 +79,7 @@ Return {"events":[],"contacts":[]} if nothing found.`;
 
   // 6. Increment usage
   await supabase.from("usage").upsert(
-    { user_id: userId, period_start: periodStart.toISOString(), calls_used: (usage?.calls_used ?? 0) + 1 },
+    { user_id: user.id, period_start: periodStart.toISOString(), calls_used: (usage?.calls_used ?? 0) + 1 },
     { onConflict: "user_id,period_start" }
   );
 

@@ -1,84 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
-
-interface ContactItem {
-  id: string;
-  data: {
-    name?: string;
-    email?: string;
-    phone?: string;
-    company?: string;
-    role?: string;
-  };
-  created_at: string;
-  meeting_id: string;
-  meeting_title?: string;
-}
+import { useSavedItems } from "@/lib/hooks/useSavedItems";
+import { downloadVCard } from "@/lib/utils";
+import { SYSTEM_FONT } from "@/lib/constants";
 
 export default function ContactsPage() {
-  const [contacts, setContacts] = useState<ContactItem[]>([]);
-  const [token, setToken] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    createClient().auth.getSession().then(({ data: { session } }) => {
-      if (session) setToken(session.access_token);
-      else setLoading(false);
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!token) return;
-    fetch("/api/meetings", { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => r.json())
-      .then(async (meetings) => {
-        if (!Array.isArray(meetings)) { setLoading(false); return; }
-        const allContacts: ContactItem[] = [];
-        await Promise.all(
-          meetings.map(async (m: { id: string; title: string }) => {
-            const r = await fetch(`/api/meetings/${m.id}/items`, {
-              headers: { Authorization: `Bearer ${token}` },
-            });
-            if (!r.ok) return;
-            const items = await r.json();
-            for (const item of items) {
-              if (item.type === "contact") {
-                allContacts.push({ ...item, meeting_title: m.title });
-              }
-            }
-          })
-        );
-        allContacts.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-        setContacts(allContacts);
-      })
-      .finally(() => setLoading(false));
-  }, [token]);
-
-  function downloadVCard(data: ContactItem["data"]) {
-    const vcf = [
-      "BEGIN:VCARD", "VERSION:3.0",
-      data.name ? `FN:${data.name}` : "",
-      data.email ? `EMAIL:${data.email}` : "",
-      data.phone ? `TEL:${data.phone}` : "",
-      data.company ? `ORG:${data.company}` : "",
-      data.role ? `TITLE:${data.role}` : "",
-      "END:VCARD",
-    ].filter(Boolean).join("\n");
-    const blob = new Blob([vcf], { type: "text/vcard" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `${data.name ?? "contact"}.vcf`;
-    a.click();
-    URL.revokeObjectURL(a.href);
-  }
-
-  const font = "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif";
+  const { items: contacts, loading } = useSavedItems("contact");
 
   return (
-    <div style={{ fontFamily: font, maxWidth: 800 }}>
+    <div style={{ fontFamily: SYSTEM_FONT, maxWidth: 800 }}>
       <h1 style={{ fontSize: 24, fontWeight: 700, margin: "0 0 24px", letterSpacing: "-0.02em" }}>Contacts</h1>
 
       {loading ? (

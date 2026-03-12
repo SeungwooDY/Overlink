@@ -1,20 +1,32 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { getUser, supabase } from "@/lib/api/auth";
 
-const supabaseAnon = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const user = await getUser(request);
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-async function getUser(request: Request) {
-  const token = request.headers.get("Authorization")?.replace("Bearer ", "");
-  if (!token) return null;
-  const { data: { user } } = await supabaseAnon.auth.getUser(token);
-  return user;
+  const { id } = await params;
+  const { data, error } = await supabase
+    .from("meetings")
+    .select("id, title, meet_room_code, created_at, folder_id, folders ( name )")
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .single();
+
+  if (error || !data) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  return NextResponse.json({
+    id: data.id,
+    title: data.title,
+    meet_room_code: data.meet_room_code,
+    created_at: data.created_at,
+    folder_id: data.folder_id,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    folder_name: (Array.isArray(data.folders) ? (data.folders as any)[0]?.name : (data.folders as any)?.name) ?? null,
+  });
 }
 
 export async function PATCH(

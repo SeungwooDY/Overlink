@@ -4,17 +4,13 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { TYPE_COLORS, SYSTEM_FONT } from "@/lib/constants";
 
 interface Folder {
   id: string;
   name: string;
   parent_id: string | null;
 }
-
-const TYPE_COLORS: Record<string, string> = {
-  url: "#60a5fa", qr_code: "#34d399", email: "#c084fc",
-  phone: "#fb923c", event: "#fbbf24", contact: "#22d3ee",
-};
 
 const NAV_ITEMS = [
   { href: "/dashboard/links",    label: "Links",     type: "url" },
@@ -24,8 +20,6 @@ const NAV_ITEMS = [
   { href: "/dashboard/events",   label: "Events",    type: "event" },
   { href: "/dashboard/contacts", label: "Contacts",  type: "contact" },
 ];
-
-const font = "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif";
 
 // Separated so useSearchParams() is inside a Suspense boundary (Next.js requirement)
 function Sidebar() {
@@ -202,7 +196,7 @@ function Sidebar() {
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ display: "flex", height: "100vh", fontFamily: font, background: "#0a0a0a", color: "#fff" }}>
+    <div style={{ display: "flex", height: "100vh", fontFamily: SYSTEM_FONT, background: "#0a0a0a", color: "#fff" }}>
       <Suspense fallback={
         <div style={{
           width: 240, flexShrink: 0,

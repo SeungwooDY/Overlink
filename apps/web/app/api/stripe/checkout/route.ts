@@ -1,33 +1,14 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
-import { createClient } from "@supabase/supabase-js";
+import { getUser, supabase } from "@/lib/api/auth";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
-// Plain client for Bearer JWT validation (no cookies — request comes from extension)
-const supabaseAnon = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
-// Service-role client for DB writes
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
 export async function POST(request: Request) {
-  const authHeader = request.headers.get("Authorization");
-  const token = authHeader?.replace("Bearer ", "");
-  if (!token) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const user = await getUser(request);
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  console.log("[checkout] token prefix:", token?.slice(0, 40));
-  const { data: { user }, error } = await supabaseAnon.auth.getUser(token);
-  console.log("[checkout] getUser error:", error?.message, "user:", user?.id);
-  if (error || !user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  console.log("[checkout] user:", user.id);
 
   // Retrieve or create Stripe customer
   const { data: sub } = await supabase
